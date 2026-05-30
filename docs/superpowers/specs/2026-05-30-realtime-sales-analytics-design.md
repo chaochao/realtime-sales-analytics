@@ -111,6 +111,8 @@ Example insight: *"Heads up — this $250k West deal is 3.1σ above West's avg (
 - **Why this metric:** average deal size per region is business-meaningful (signals shifting deal quality/mix) and segment-scoped, so a single deal can move it enough to be interesting — unlike total revenue, which one deal barely dents.
 - **Why this noteworthy rule:** the >=3 prior-deals guard avoids alerting on noise from near-empty regions; the 2σ bar fires only on genuine outliers, not routine deals.
 
+**Insight phrasing:** the insight sentence is built from a **deterministic template** in `drift.ts` (no LLM call). Drift fires on the real-time insert hot path, so this keeps it instant, free, and unit-testable, and guarantees the numbers are never restated incorrectly. The LLM is reserved for query parsing, where language understanding is actually needed.
+
 ## Seeding
 
 On first run (empty `transactions` table), generate ~50-80 plausible transactions as JSON via the OpenAI model (AI SDK + Zod schema): realistic reps mapped to regions, customer names, amounts, currencies, dates spread over recent months. Idempotent (only seeds when empty). **Deterministic fallback** generator runs if no API key or the call fails, so the app always boots.
