@@ -1,0 +1,44 @@
+{
+  "name": "realtime-sales-analytics",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chaochao/realtime-sales-analytics.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/chaochao/realtime-sales-analytics/issues"
+  },
+  "homepage": "https://github.com/chaochao/realtime-sales-analytics#readme",
+  "description": "",
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.68",
+    "@mastra/core": "^1.41.0",
+    "ai": "^6.0.197",
+    "better-sqlite3": "^12.10.0",
+    "next": "^16.2.7",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "recharts": "^3.8.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.9.2",
+    "@types/react": "^19.2.17",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
