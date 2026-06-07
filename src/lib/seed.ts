@@ -42,7 +42,8 @@ async function fallbackSeed(): Promise<void> {
     }));
   }
   await Promise.all(promises);
-  console.log("[seed] Fallback seed complete — 60 transactions inserted.");
+  const count = await prisma.transaction.count();
+  console.log(`[seed] Fallback seed complete — ${count} transactions ready.`);
 }
 
 async function llmSeed(): Promise<boolean> {
@@ -65,7 +66,8 @@ Realistic company customer names, amounts between 2,000 and 90,000, ISO dates (Y
       const currency = SUPPORTED_CURRENCIES.includes(t.currency.toUpperCase()) ? t.currency : "USD";
       await createTransaction({ ...t, currency });
     }
-    console.log("[seed] LLM seed complete.");
+    const count = await prisma.transaction.count();
+    console.log(`[seed] LLM seed complete — ${count} transactions ready.`);
     return true;
   } catch (err) {
     console.warn("[seed] LLM seed failed, will use fallback:", err);
@@ -74,6 +76,10 @@ Realistic company customer names, amounts between 2,000 and 90,000, ISO dates (Y
 }
 
 let seeding: Promise<void> | null = null;
+
+export function resetSeeding(): void {
+  seeding = null;
+}
 
 export function ensureSeeded(): Promise<void> {
   if (seeding) return seeding;

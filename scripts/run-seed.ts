@@ -1,8 +1,12 @@
 import "dotenv/config";
-import { ensureSeeded } from "../src/lib/seed";
+import { resetSeeding, ensureSeeded } from "../src/lib/seed";
 import { prisma } from "../src/lib/db";
 
 async function main() {
+  // Clear existing data so the running server's Prisma connection stays valid
+  await prisma.correction.deleteMany();
+  await prisma.transaction.deleteMany();
+  resetSeeding();
   await ensureSeeded();
 
   const count = await prisma.transaction.count();

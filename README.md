@@ -13,19 +13,14 @@
    # then set OPENAI_API_KEY=sk-... in .env.local
    ```
 
-3. Run database migrations:
-   ```bash
-   npx prisma migrate dev --name init
-   ```
-
-4. Start the dev server:
+3. Start the dev server:
    ```bash
    npm run dev
    ```
 
-The app seeds itself on first load. If `OPENAI_API_KEY` is set, it uses `gpt-4o-mini` to generate 60 realistic B2B transactions. If not, a deterministic fallback runs instead — the app always boots with data.
+That's it. `npm run dev` automatically runs `prisma migrate deploy` first (creates the database and tables if they don't exist), then starts Next.js. On the first request, the app detects an empty database and seeds it — using `gpt-4o-mini` if `OPENAI_API_KEY` is set, or a deterministic fallback otherwise.
 
-To wipe and re-seed:
+To re-seed without restarting the server (browser refresh is enough):
 ```bash
 npm run reseed
 ```
