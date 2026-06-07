@@ -30,7 +30,7 @@ async function fallbackSeed(): Promise<void> {
   const promises = [];
   let day = 0;
   for (let i = 0; i < 60; i++) {
-    day = (day + 3) % 180;
+    day = (day + 1) % 30;
     const date = new Date(Date.now() - day * 86400000).toISOString().slice(0, 10);
     promises.push(createTransaction({
       customerName: `${customers[i % customers.length]} ${i}`,
@@ -55,7 +55,7 @@ async function llmSeed(): Promise<boolean> {
     const { object } = await generateObject({
       model: openai("gpt-4o-mini"),
       schema: seedSchema,
-      prompt: `Generate 60 plausible B2B sales transactions for the last 6 months.
+      prompt: `Today is ${new Date().toISOString().slice(0, 10)}. Generate 60 plausible B2B sales transactions for the last 30 days (all dates must be between ${new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)} and today).
 Use these regions: ${REGIONS.join(", ")}. Use these sales reps: ${REPS.join(", ")}.
 Use currencies from: ${SUPPORTED_CURRENCIES.join(", ")} (mostly USD).
 Realistic company customer names, amounts between 2,000 and 90,000, ISO dates (YYYY-MM-DD).`,
