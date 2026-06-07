@@ -40,6 +40,14 @@ export async function resolveFilter(
     const candidates = matchCandidates(term, known[field] ?? []);
     if (candidates.length === 1) {
       (resolved as Record<string, string>)[field] = candidates[0];
+    } else if (candidates.length === 0 && (field === "salesRep" || field === "customer")) {
+      const crossField = field === "salesRep" ? "customer" : "salesRep";
+      const crossCandidates = matchCandidates(term, known[crossField] ?? []);
+      if (crossCandidates.length === 1) {
+        (resolved as Record<string, string>)[crossField] = crossCandidates[0];
+      } else {
+        ambiguities.push({ field: crossCandidates.length > 1 ? crossField : field, term, candidates: crossCandidates });
+      }
     } else {
       ambiguities.push({ field, term, candidates });
     }

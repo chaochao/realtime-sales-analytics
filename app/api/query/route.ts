@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     salesRep: await distinctValues("salesRep"),
     region: await distinctValues("region"),
     currency: await distinctValues("currency"),
+    customer: await distinctValues("customerName"),
   };
   const result = await resolveFilter(draft, known, lookupCorrection);
 

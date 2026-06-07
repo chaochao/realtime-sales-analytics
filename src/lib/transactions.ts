@@ -35,7 +35,7 @@ export async function queryTransactions(filter: Filter = {}): Promise<Transactio
   });
 }
 
-export async function distinctValues(column: "salesRep" | "region" | "currency"): Promise<string[]> {
+export async function distinctValues(column: "salesRep" | "region" | "currency" | "customerName"): Promise<string[]> {
   const rows = await prisma.transaction.findMany({
     select: { [column]: true },
     distinct: [column],
