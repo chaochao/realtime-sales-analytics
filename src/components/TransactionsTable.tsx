@@ -19,10 +19,20 @@ function sortRows(rows: Transaction[], key: SortKey, dir: SortDir): Transaction[
 }
 
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) {
+    return (
+      <svg className="ml-1 inline-block h-3 w-3 text-slate-300" viewBox="0 0 8 10" fill="currentColor">
+        <path d="M4 0 L7 3.5 H1 Z" />
+        <path d="M4 10 L1 6.5 H7 Z" />
+      </svg>
+    );
+  }
   return (
-    <span className={`ml-1 inline-block text-xs ${active ? "text-blue-600" : "text-slate-300"}`}>
-      {!active ? "↕" : dir === "asc" ? "↑" : "↓"}
-    </span>
+    <svg className="ml-1 inline-block h-3 w-3 text-blue-600" viewBox="0 0 8 6" fill="currentColor">
+      {dir === "asc"
+        ? <path d="M4 0 L8 6 H0 Z" />
+        : <path d="M4 6 L0 0 H8 Z" />}
+    </svg>
   );
 }
 
