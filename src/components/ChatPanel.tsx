@@ -12,9 +12,11 @@ type PendingConfirm = { filter: Filter; interpretation: string; correction?: { t
 export function ChatPanel({
   onResults,
   insights,
+  onDismissInsight,
 }: {
   onResults: (filter: Filter | null) => void;
   insights: string[];
+  onDismissInsight: (index: number) => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -168,10 +170,17 @@ export function ChatPanel({
         )}
 
         {insights.map((t, i) => (
-          <div key={`ins-${i}`}>
-            <span className="inline-block rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
+          <div key={`ins-${i}`} className="relative inline-block max-w-full">
+            <span className="inline-block rounded-lg bg-amber-50 border border-amber-200 pl-3 pr-6 py-2 text-sm text-amber-900">
               📈 {t}
             </span>
+            <button
+              onClick={() => onDismissInsight(i)}
+              className="absolute top-2 right-2 text-amber-400 hover:text-amber-700 text-xs leading-none"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
           </div>
         ))}
         {loading && (

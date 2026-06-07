@@ -1,4 +1,4 @@
-import { subscribe } from "@/src/lib/events";
+import { subscribe, getRecentInsights } from "@/src/lib/events";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,7 @@ export async function GET() {
     start(controller) {
       const send = (data: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      send({ type: "connected" });
+      send({ type: "connected", insights: getRecentInsights() });
       unsub = subscribe(send);
     },
     cancel() { unsub(); },
