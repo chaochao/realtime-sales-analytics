@@ -7,6 +7,8 @@ type Msg =
   | { role: "agent"; text: string }
   | { role: "clarify"; text: string; ambiguity: Ambiguity; baseFilter: Filter };
 
+type PendingConfirm = { filter: Filter; interpretation: string };
+
 export function ChatPanel({
   onResults,
   insights,
@@ -17,17 +19,25 @@ export function ChatPanel({
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [correctionBase, setCorrectionBase] = useState<Filter | null>(null);
+
+  async function queryApi(text: string, baseFilter?: Filter) {
+    return fetch("/api/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, baseFilter }),
+    }).then((r) => r.json());
+  }
 
   async function send(text: string) {
     setMessages((m) => [...m, { role: "user", text }]);
+    const base = correctionBase;
+    setPendingConfirm(null);
+    setCorrectionBase(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      }).then((r) => r.json());
-
+      const res = await queryApi(text, base ?? undefined);
       if (res.status === "clarify") {
         const amb: Ambiguity = res.ambiguities[0];
         const label = amb.candidates.length
@@ -35,8 +45,7 @@ export function ChatPanel({
           : `No ${String(amb.field)} matching "${amb.term}" found.`;
         setMessages((m) => [...m, { role: "clarify", text: label, ambiguity: amb, baseFilter: {} }]);
       } else {
-        setMessages((m) => [...m, { role: "agent", text: `Showing: ${res.interpretation}` }]);
-        onResults(res.filter ?? null);
+        setPendingConfirm({ filter: res.filter, interpretation: res.interpretation });
       }
     } finally {
       setLoading(false);
@@ -54,6 +63,18 @@ export function ChatPanel({
       { role: "agent", text: `Got it — "${amb.term}" = ${value}. Showing: ${res.interpretation}` },
     ]);
     onResults(res.filter ?? null);
+  }
+
+  function handleYes() {
+    if (!pendingConfirm) return;
+    onResults(pendingConfirm.filter);
+    setMessages((m) => [...m, { role: "agent", text: `Showing: ${pendingConfirm.interpretation}` }]);
+    setPendingConfirm(null);
+  }
+
+  function handleNoClick() {
+    setCorrectionBase(pendingConfirm?.filter ?? null);
+    setPendingConfirm(null);
   }
 
   return (
@@ -84,6 +105,29 @@ export function ChatPanel({
             )}
           </div>
         ))}
+
+        {pendingConfirm && !loading && (
+          <div>
+            <span className="inline-block rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-800">
+              I&apos;m reading this as: <strong>{pendingConfirm.interpretation}</strong>. Is that right?
+            </span>
+            <div className="mt-1 flex gap-2">
+              <button
+                onClick={handleYes}
+                className="rounded-full border border-green-300 bg-green-50 px-3 py-1 text-xs text-green-700 hover:bg-green-100"
+              >
+                Yes, apply
+              </button>
+              <button
+                onClick={handleNoClick}
+                className="rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs text-slate-600 hover:bg-slate-100"
+              >
+                No, correct
+              </button>
+            </div>
+          </div>
+        )}
+
         {insights.map((t, i) => (
           <div key={`ins-${i}`}>
             <span className="inline-block rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
@@ -105,7 +149,7 @@ export function ChatPanel({
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="e.g. Show me John's deals in the West"
+          placeholder={correctionBase ? "How should I correct this?" : "e.g. Show me John's deals in the West"}
           className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
@@ -115,9 +159,9 @@ export function ChatPanel({
           Send
         </button>
       </form>
-      {messages.length > 0 && (
+      {(messages.length > 0 || pendingConfirm) && (
         <button
-          onClick={() => { setMessages([]); onResults(null); }}
+          onClick={() => { setMessages([]); setPendingConfirm(null); setCorrectionBase(null); onResults(null); }}
           className="mt-2 text-xs text-slate-400 hover:text-slate-600 text-center"
         >
           Clear
