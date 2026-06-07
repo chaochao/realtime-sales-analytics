@@ -6,7 +6,11 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "reseed": "rm -f dev.db dev.db-wal dev.db-shm && npx prisma migrate dev --name init && npx tsx scripts/run-seed.ts"
   },
   "repository": {
     "type": "git",
