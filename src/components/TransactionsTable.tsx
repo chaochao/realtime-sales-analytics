@@ -1,6 +1,6 @@
 import type { Transaction } from "@/src/lib/types";
 
-export function TransactionsTable({ rows }: { rows: Transaction[] }) {
+export function TransactionsTable({ rows, newId }: { rows: Transaction[]; newId?: string }) {
   return (
     <div className="overflow-auto rounded-lg bg-white shadow-sm border border-slate-100">
       <table className="w-full text-sm">
@@ -16,7 +16,10 @@ export function TransactionsTable({ rows }: { rows: Transaction[] }) {
         </thead>
         <tbody>
           {rows.map((t) => (
-            <tr key={t.id} className="border-t border-slate-100 hover:bg-slate-50">
+            <tr
+              key={t.id}
+              className={`border-t border-slate-100 hover:bg-slate-50 ${t.id === newId ? "row-new" : ""}`}
+            >
               <td className="p-3">{t.date}</td>
               <td className="p-3">{t.customerName}</td>
               <td className="p-3">{t.amount.toLocaleString()}</td>

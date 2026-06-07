@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import type { Analytics, Transaction } from "@/src/lib/types";
 import { AnalyticsCards } from "@/src/components/AnalyticsCards";
@@ -17,6 +17,8 @@ export default function Dashboard() {
   const [rows, setRows] = useState<Transaction[]>([]);
   const [filtered, setFiltered] = useState<Transaction[] | null>(null);
   const [insights, setInsights] = useState<string[]>([]);
+  const [newId, setNewId] = useState<string | undefined>();
+  const newIdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   async function loadAll() {
     const [a, t] = await Promise.all([
@@ -36,9 +38,13 @@ export default function Dashboard() {
         setAnalytics(data.analytics);
         setRows((prev) => [data.transaction, ...prev]);
         if (data.insight) setInsights((prev) => [data.insight.message, ...prev]);
+        // highlight the new row, clear after animation completes
+        setNewId(data.transaction.id);
+        clearTimeout(newIdTimer.current);
+        newIdTimer.current = setTimeout(() => setNewId(undefined), 600);
       }
     };
-    return () => es.close();
+    return () => { es.close(); clearTimeout(newIdTimer.current); };
   }, []);
 
   return (
@@ -60,10 +66,7 @@ export default function Dashboard() {
           <RevenueChart a={analytics} />
         </div>
         <div className="h-[280px]">
-          <ChatPanel
-            onResults={(r) => setFiltered(r)}
-            insights={insights}
-          />
+          <ChatPanel onResults={(r) => setFiltered(r)} insights={insights} />
         </div>
       </div>
 
@@ -74,16 +77,13 @@ export default function Dashboard() {
             : `All transactions (${rows.length})`}
         </h2>
         {filtered && (
-          <button
-            onClick={() => setFiltered(null)}
-            className="text-xs text-blue-600 hover:underline"
-          >
+          <button onClick={() => setFiltered(null)} className="text-xs text-blue-600 hover:underline">
             Clear filter
           </button>
         )}
       </div>
 
-      <TransactionsTable rows={filtered ?? rows} />
+      <TransactionsTable rows={filtered ?? rows} newId={newId} />
     </main>
   );
 }
