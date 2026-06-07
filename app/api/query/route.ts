@@ -38,5 +38,6 @@ export async function POST(req: NextRequest) {
     status: "ok",
     interpretation,
     filter: merged,
+    draft,
   });
 }

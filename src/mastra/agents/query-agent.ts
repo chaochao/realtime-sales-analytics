@@ -22,6 +22,8 @@ export async function parseQuery(text: string): Promise<Filter> {
       schema: filterSchema,
       prompt: `Extract sales transaction filters from this request. Use partial names exactly as typed — do NOT guess full names. Omit fields not mentioned. Dates: ISO (YYYY-MM-DD). Amounts: numbers only.
 
+Words like "deal", "deals", "transaction", "transactions", "trans", "record", "records", "data" refer to what is being shown — they are NOT part of a name or filter value. Strip them before extracting names. Example: "john's deals" → salesRep: "john".
+
 Request: "${text}"`,
     });
     return Object.fromEntries(

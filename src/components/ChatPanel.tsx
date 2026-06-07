@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Filter, Ambiguity } from "@/src/lib/types";
 
 type Msg =
@@ -7,7 +7,7 @@ type Msg =
   | { role: "agent"; text: string }
   | { role: "clarify"; text: string; ambiguity: Ambiguity; baseFilter: Filter };
 
-type PendingConfirm = { filter: Filter; interpretation: string };
+type PendingConfirm = { filter: Filter; interpretation: string; correction?: { term: string; field: string }; draft?: Filter };
 
 export function ChatPanel({
   onResults,
@@ -21,6 +21,14 @@ export function ChatPanel({
   const [loading, setLoading] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [correctionBase, setCorrectionBase] = useState<Filter | null>(null);
+  const [pendingAmbiguity, setPendingAmbiguity] = useState<Ambiguity | null>(null);
+  const [correctionDraft, setCorrectionDraft] = useState<Filter | null>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, pendingConfirm, loading]);
 
   async function queryApi(text: string, baseFilter?: Filter) {
     return fetch("/api/query", {
@@ -33,8 +41,12 @@ export function ChatPanel({
   async function send(text: string) {
     setMessages((m) => [...m, { role: "user", text }]);
     const base = correctionBase ?? pendingConfirm?.filter ?? null;
+    const carryAmbiguity = base ? pendingAmbiguity : null;
+    const localCorrectionDraft = base ? (correctionDraft ?? pendingConfirm?.draft ?? null) : null;
     setPendingConfirm(null);
     setCorrectionBase(null);
+    setPendingAmbiguity(null);
+    setCorrectionDraft(null);
     setLoading(true);
     try {
       const res = await queryApi(text, base ?? undefined);
@@ -46,39 +58,68 @@ export function ChatPanel({
         const partial = res.partialFilter ?? {};
         setMessages((m) => [...m, { role: "clarify", text: label, ambiguity: amb, baseFilter: partial }]);
         setCorrectionBase(partial);
+        setPendingAmbiguity(amb);
       } else {
-        setPendingConfirm({ filter: res.filter, interpretation: res.interpretation });
+        let correction: { term: string; field: string } | undefined;
+        if (carryAmbiguity && ["salesRep", "customer"].includes(carryAmbiguity.field as string)) {
+          correction = { term: carryAmbiguity.term, field: carryAmbiguity.field as string };
+        } else if (localCorrectionDraft) {
+          for (const field of ["salesRep", "customer"] as const) {
+            const originalTerm = localCorrectionDraft[field] as string | undefined;
+            const newValue = (res.filter as Record<string, string>)[field];
+            if (originalTerm && newValue && originalTerm.trim().toLowerCase() !== newValue.trim().toLowerCase()) {
+              correction = { term: originalTerm, field };
+              break;
+            }
+          }
+        }
+        setPendingConfirm({ filter: res.filter, interpretation: res.interpretation, draft: res.draft, correction });
       }
     } finally {
       setLoading(false);
     }
   }
 
-  async function choose(amb: Ambiguity, value: string, baseFilter: Filter) {
-    const res = await fetch("/api/correction", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ term: amb.term, field: amb.field, resolvedValue: value, baseFilter }),
-    }).then((r) => r.json());
-    setPendingConfirm({ filter: res.filter, interpretation: res.interpretation });
+  function choose(amb: Ambiguity, value: string, baseFilter: Filter) {
+    const filter = { ...baseFilter, [amb.field]: value } as Filter;
+    const interpretation = Object.entries(filter)
+      .filter(([, v]) => v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => `${k} = ${v}`)
+      .join(", ") || "no filters";
+    const correction = ["salesRep", "customer"].includes(amb.field as string)
+      ? { term: amb.term, field: amb.field as string }
+      : undefined;
+    setPendingConfirm({ filter, interpretation, correction });
   }
 
   function handleYes() {
     if (!pendingConfirm) return;
     onResults(pendingConfirm.filter);
     setMessages((m) => [...m, { role: "agent", text: `Showing: ${pendingConfirm.interpretation}` }]);
+    if (pendingConfirm.correction) {
+      const { term, field } = pendingConfirm.correction;
+      const resolvedValue = (pendingConfirm.filter as Record<string, unknown>)[field];
+      if (resolvedValue) {
+        fetch("/api/correction", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ term, field, resolvedValue, baseFilter: {} }),
+        });
+      }
+    }
     setPendingConfirm(null);
   }
 
   function handleNoClick() {
     setCorrectionBase(pendingConfirm?.filter ?? null);
+    setCorrectionDraft(pendingConfirm?.draft ?? null);
     setPendingConfirm(null);
   }
 
   return (
     <div className="flex h-full flex-col rounded-lg bg-white border border-slate-100 shadow-sm p-4">
       <div className="mb-2 text-sm font-medium text-slate-700">Ask about your sales</div>
-      <div className="flex-1 space-y-2 overflow-auto min-h-0">
+      <div ref={messagesRef} className="flex-1 space-y-2 overflow-auto min-h-0">
         {messages.map((m, i) => (
           <div key={i} className={m.role === "user" ? "text-right" : ""}>
             <span className={`inline-block rounded-lg px-3 py-2 text-sm ${
@@ -120,7 +161,7 @@ export function ChatPanel({
                 onClick={handleNoClick}
                 className="rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs text-slate-600 hover:bg-slate-100"
               >
-                No, correct
+                No
               </button>
             </div>
           </div>
@@ -159,7 +200,7 @@ export function ChatPanel({
       </form>
       {(messages.length > 0 || pendingConfirm) && (
         <button
-          onClick={() => { setMessages([]); setPendingConfirm(null); setCorrectionBase(null); onResults(null); }}
+          onClick={() => { setMessages([]); setPendingConfirm(null); setCorrectionBase(null); setCorrectionDraft(null); setPendingAmbiguity(null); onResults(null); }}
           className="mt-2 text-xs text-slate-400 hover:text-slate-600 text-center"
         >
           Clear
