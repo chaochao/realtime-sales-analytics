@@ -133,6 +133,39 @@ Every query goes through a confirmation step before filters are applied:
 4. **No** → user types correction in main input → re-parsed with previous filter as base → new confirmation
 5. On confirm, if the original term (e.g. "john") differs from the confirmed value (e.g. "John Doe"), the correction is saved to the DB and auto-applied next time
 
+### Autonomous Metric Monitoring — Deal Size Drift by Region
+
+The agent monitors **average deal size per region** autonomously. Every time a transaction is created, it checks whether the new deal's value is a statistical outlier relative to that region's history — without the user asking.
+
+**Why this metric?**
+Average deal size by region is the earliest signal of meaningful business change. Revenue totals are a lagging indicator (they accumulate slowly). Transaction count changes even more slowly. But a single deal that's significantly larger or smaller than a region's norm can indicate a new customer segment, unusual pricing, a data entry error, or a strategic shift — and it shows up immediately.
+
+**How the alert threshold is decided:**
+The agent uses a z-score:
+
+```
+z = (new deal − region average) / region std dev
+```
+
+An alert fires when `|z| > 2` with at least 3 prior deals in that region.
+
+- **2σ** — at a normal distribution, only ~4.6% of deals randomly exceed this. Sensitive enough to catch real anomalies without being noisy.
+- **3 prior deals minimum** — fewer data points make the std dev unreliable, producing false alerts on the first few deals of a new region.
+
+**How it surfaces:**
+When a new transaction triggers drift, the backend broadcasts the insight via SSE. It appears in the chat panel as an amber bubble — proactively, without any user query:
+
+> *Heads up — this $85,000 West deal is 2.4σ from West's average ($41,000); average deal size moved +12% → $46,200.*
+
+The full pipeline:
+```
+POST /api/transactions → detectDrift() → publishTransaction(insight) → SSE → ChatPanel amber bubble
+```
+
+All logic is in `src/lib/agent/drift.ts`. The insight travels through the same SSE channel as live transaction updates, so no extra connection or polling is needed.
+
+---
+
 ### Correction Learning
 
 Corrections are stored in SQLite (`Correction` table) keyed by `(term, field)`. `saveCorrection` does an upsert, so corrections are always up to date. Only `salesRep` and `customer` fields are stored — region and currency are finite/well-known and fuzzy matching handles them without corrections.
