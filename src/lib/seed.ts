@@ -24,7 +24,8 @@ async function isEmpty(): Promise<boolean> {
   return count === 0;
 }
 
-function fallbackSeed(): Promise<void> {
+async function fallbackSeed(): Promise<void> {
+  console.log("[seed] Using deterministic fallback seed...");
   const customers = ["Acme", "Globex", "Initech", "Umbrella", "Soylent", "Hooli", "Stark", "Wayne"];
   const promises = [];
   let day = 0;
@@ -40,12 +41,17 @@ function fallbackSeed(): Promise<void> {
       date,
     }));
   }
-  return Promise.all(promises).then(() => undefined);
+  await Promise.all(promises);
+  console.log("[seed] Fallback seed complete — 60 transactions inserted.");
 }
 
 async function llmSeed(): Promise<boolean> {
-  if (!process.env.OPENAI_API_KEY) return false;
+  if (!process.env.OPENAI_API_KEY) {
+    console.log("[seed] No OPENAI_API_KEY found, skipping LLM seed.");
+    return false;
+  }
   try {
+    console.log("[seed] Calling gpt-4o-mini to generate transactions...");
     const { object } = await generateObject({
       model: openai("gpt-4o-mini"),
       schema: seedSchema,
@@ -54,13 +60,15 @@ Use these regions: ${REGIONS.join(", ")}. Use these sales reps: ${REPS.join(", "
 Use currencies from: ${SUPPORTED_CURRENCIES.join(", ")} (mostly USD).
 Realistic company customer names, amounts between 2,000 and 90,000, ISO dates (YYYY-MM-DD).`,
     });
+    console.log(`[seed] LLM returned ${object.transactions.length} transactions, inserting...`);
     for (const t of object.transactions) {
       const currency = SUPPORTED_CURRENCIES.includes(t.currency.toUpperCase()) ? t.currency : "USD";
       await createTransaction({ ...t, currency });
     }
+    console.log("[seed] LLM seed complete.");
     return true;
   } catch (err) {
-    console.warn("LLM seed failed, using fallback:", err);
+    console.warn("[seed] LLM seed failed, will use fallback:", err);
     return false;
   }
 }
@@ -71,6 +79,7 @@ export function ensureSeeded(): Promise<void> {
   if (seeding) return seeding;
   seeding = (async () => {
     if (!(await isEmpty())) return;
+    console.log("[seed] Database is empty, starting seed...");
     const ok = await llmSeed();
     if (!ok && (await isEmpty())) await fallbackSeed();
   })();
