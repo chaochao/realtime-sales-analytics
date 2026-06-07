@@ -96,6 +96,33 @@ The original `toUsd()` function returned raw floating-point multiplication resul
 
 ## Chat Filter — Design & Bug History
 
+### What the LLM Does (and What It Doesn't)
+
+The LLM has exactly one job: convert a free-text string into a structured filter draft.
+
+```
+"give me mik's deals in the west under 50k"
+→ { salesRep: "mik", region: "west", amountMax: 50000 }
+```
+
+It does not look up names, query the DB, or decide who "mik" is. It only extracts intent into fields.
+
+Everything after that is deterministic code:
+- **Resolver** — substring-matches draft terms against real DB values (`"mike chen".includes("mik")` → `"Mike Chen"`)
+- **Corrections table** — consulted before fuzzy matching; if "john → John Doe" is saved, it resolves directly
+- **DB query** — pure filter, no AI involved
+
+Mastra (`src/mastra/agents/query-agent.ts`) is the agent framework used here but barely exercised — `parseQuery` calls `generateObject` from the Vercel AI SDK directly. It was scaffolded for potential future tool-call based agents but currently adds no behavior beyond the LLM call itself.
+
+**The full pipeline:**
+```
+User text → LLM → draft filter → resolver → confirmed filter → DB query → results
+```
+
+The only intelligence is in step 1. The rest is deterministic.
+
+---
+
 ### Agent Confirmation Flow
 
 Every query goes through a confirmation step before filters are applied:
