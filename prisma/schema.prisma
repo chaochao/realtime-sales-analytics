@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Transaction {
+  id           String   @id @default(uuid())
+  customerName String
+  amount       Float
+  currency     String
+  amountUsd    Float
+  region       String
+  salesRep     String
+  date         String
+  createdAt    String
+}
+
+model Correction {
+  id            String   @id @default(uuid())
+  term          String
+  field         String
+  resolvedValue String
+  createdAt     String
+
+  @@unique([term, field])
+}

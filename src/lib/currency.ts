@@ -12,5 +12,5 @@ export const SUPPORTED_CURRENCIES = Object.keys(FX_TO_USD);
 export function toUsd(amount: number, currency: string): number {
   const rate = FX_TO_USD[currency.toUpperCase()];
   if (rate === undefined) throw new Error(`Unsupported currency: ${currency}`);
-  return amount * rate;
+  return Math.round(amount * rate * 100) / 100;
 }
