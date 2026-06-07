@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import type { Transaction, Filter, Ambiguity } from "@/src/lib/types";
+import type { Filter, Ambiguity } from "@/src/lib/types";
 
 type Msg =
   | { role: "user"; text: string }
@@ -11,7 +11,7 @@ export function ChatPanel({
   onResults,
   insights,
 }: {
-  onResults: (rows: Transaction[] | null) => void;
+  onResults: (filter: Filter | null) => void;
   insights: string[];
 }) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -36,7 +36,7 @@ export function ChatPanel({
         setMessages((m) => [...m, { role: "clarify", text: label, ambiguity: amb, baseFilter: {} }]);
       } else {
         setMessages((m) => [...m, { role: "agent", text: `Showing: ${res.interpretation}` }]);
-        onResults(res.transactions);
+        onResults(res.filter ?? null);
       }
     } finally {
       setLoading(false);
@@ -53,7 +53,7 @@ export function ChatPanel({
       ...m,
       { role: "agent", text: `Got it — "${amb.term}" = ${value}. Showing: ${res.interpretation}` },
     ]);
-    onResults(res.transactions);
+    onResults(res.filter ?? null);
   }
 
   return (

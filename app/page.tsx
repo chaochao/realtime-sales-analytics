@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import type { Analytics, Transaction } from "@/src/lib/types";
+import type { Analytics, Transaction, Filter } from "@/src/lib/types";
 import { AnalyticsCards } from "@/src/components/AnalyticsCards";
 import { RevenueChart } from "@/src/components/RevenueChart";
 import { TransactionsTable } from "@/src/components/TransactionsTable";
@@ -13,24 +14,63 @@ const EMPTY: Analytics = {
   revenueByRegion: [], topReps: [],
 };
 
+function filterFromResolved(f: Filter): TableFilter {
+  return {
+    dateFrom:     f.dateFrom  ?? "",
+    dateTo:       f.dateTo    ?? "",
+    customerName: f.customer  ?? "",
+    amountMin:    f.amountMin != null ? String(f.amountMin) : "",
+    amountMax:    f.amountMax != null ? String(f.amountMax) : "",
+    region:       f.region    ?? "",
+    salesRep:     f.salesRep  ?? "",
+  };
+}
+
+function filterFromParams(params: URLSearchParams): TableFilter {
+  return {
+    dateFrom:     params.get("dateFrom")   ?? "",
+    dateTo:       params.get("dateTo")     ?? "",
+    customerName: params.get("customer")   ?? "",
+    amountMin:    params.get("amountMin")  ?? "",
+    amountMax:    params.get("amountMax")  ?? "",
+    region:       params.get("region")     ?? "",
+    salesRep:     params.get("salesRep")   ?? "",
+  };
+}
+
+function filterToParams(f: TableFilter): URLSearchParams {
+  const p = new URLSearchParams();
+  if (f.region)       p.set("region",    f.region);
+  if (f.salesRep)     p.set("salesRep",  f.salesRep);
+  if (f.customerName) p.set("customer",  f.customerName);
+  if (f.dateFrom)     p.set("dateFrom",  f.dateFrom);
+  if (f.dateTo)       p.set("dateTo",    f.dateTo);
+  if (f.amountMin !== "") p.set("amountMin", f.amountMin);
+  if (f.amountMax !== "") p.set("amountMax", f.amountMax);
+  return p;
+}
+
 function applyFilter(rows: Transaction[], f: TableFilter): Transaction[] {
   return rows.filter((t) => {
     if (f.dateFrom && t.date < f.dateFrom) return false;
     if (f.dateTo && t.date > f.dateTo) return false;
     if (f.customerName && !t.customerName.toLowerCase().includes(f.customerName.toLowerCase())) return false;
-    if (f.amountMin && t.amount < Number(f.amountMin)) return false;
-    if (f.amountMax && t.amount > Number(f.amountMax)) return false;
+    if (f.amountMin !== "" && t.amountUsd < Number(f.amountMin)) return false;
+    if (f.amountMax !== "" && t.amountUsd > Number(f.amountMax)) return false;
     if (f.region && t.region !== f.region) return false;
     if (f.salesRep && t.salesRep !== f.salesRep) return false;
     return true;
   });
 }
 
-export default function Dashboard() {
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [analytics, setAnalytics] = useState<Analytics>(EMPTY);
   const [rows, setRows] = useState<Transaction[]>([]);
-  const [chatFiltered, setChatFiltered] = useState<Transaction[] | null>(null);
-  const [tableFilter, setTableFilter] = useState<TableFilter>(EMPTY_FILTER);
+  const [tableFilter, setTableFilter] = useState<TableFilter>(() => filterFromParams(searchParams));
   const [insights, setInsights] = useState<string[]>([]);
   const [newId, setNewId] = useState<string | undefined>();
   const newIdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -61,17 +101,18 @@ export default function Dashboard() {
     return () => { es.close(); clearTimeout(newIdTimer.current); };
   }, []);
 
-  // derive unique regions + reps from loaded data for filter dropdowns
+  // sync tableFilter → URL
+  useEffect(() => {
+    const qs = filterToParams(tableFilter).toString();
+    router.replace(qs ? `?${qs}` : pathname, { scroll: false });
+  }, [tableFilter, router]);
+
   const regions = useMemo(() => [...new Set(rows.map((r) => r.region))].sort(), [rows]);
   const salesReps = useMemo(() => [...new Set(rows.map((r) => r.salesRep))].sort(), [rows]);
 
-  // chat filter takes priority; otherwise apply table filter
-  const displayRows = useMemo(() => {
-    const base = chatFiltered ?? rows;
-    return applyFilter(base, tableFilter);
-  }, [chatFiltered, rows, tableFilter]);
+  const displayRows = useMemo(() => applyFilter(rows, tableFilter), [rows, tableFilter]);
 
-  const hasTableFilter = Object.values(tableFilter).some((v) => v !== "");
+  const hasFilter = Object.values(tableFilter).some((v) => v !== "");
 
   return (
     <main className="mx-auto max-w-6xl space-y-4 p-6">
@@ -89,7 +130,10 @@ export default function Dashboard() {
           <RevenueChart a={analytics} />
         </div>
         <div className="h-[280px]">
-          <ChatPanel onResults={(r) => { setChatFiltered(r); setTableFilter(EMPTY_FILTER); }} insights={insights} />
+          <ChatPanel
+            onResults={(f) => setTableFilter(f ? filterFromResolved(f) : EMPTY_FILTER)}
+            insights={insights}
+          />
         </div>
       </div>
 
@@ -97,21 +141,19 @@ export default function Dashboard() {
         filter={tableFilter}
         regions={regions}
         salesReps={salesReps}
-        onChange={(f) => { setTableFilter(f); setChatFiltered(null); }}
+        onChange={setTableFilter}
         onClear={() => setTableFilter(EMPTY_FILTER)}
       />
 
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-slate-700">
-          {chatFiltered
-            ? `Chat filter (${displayRows.length})`
-            : hasTableFilter
+          {hasFilter
             ? `Filtered (${displayRows.length} of ${rows.length})`
             : `All transactions (${rows.length})`}
         </h2>
-        {(chatFiltered || hasTableFilter) && (
+        {hasFilter && (
           <button
-            onClick={() => { setChatFiltered(null); setTableFilter(EMPTY_FILTER); }}
+            onClick={() => setTableFilter(EMPTY_FILTER)}
             className="text-xs text-blue-600 hover:underline"
           >
             Clear all filters
@@ -121,5 +163,13 @@ export default function Dashboard() {
 
       <TransactionsTable rows={displayRows} newId={newId} />
     </main>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <Suspense>
+      <DashboardContent />
+    </Suspense>
   );
 }

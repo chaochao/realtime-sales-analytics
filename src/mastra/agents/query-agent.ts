@@ -4,14 +4,14 @@ import { z } from "zod";
 import type { Filter } from "@/src/lib/types";
 
 const filterSchema = z.object({
-  salesRep: z.string().optional(),
-  region: z.string().optional(),
-  customer: z.string().optional(),
-  currency: z.string().optional(),
-  amountMin: z.number().optional(),
-  amountMax: z.number().optional(),
-  dateFrom: z.string().optional(),
-  dateTo: z.string().optional(),
+  salesRep: z.string().nullable(),
+  region: z.string().nullable(),
+  customer: z.string().nullable(),
+  currency: z.string().nullable(),
+  amountMin: z.number().nullable(),
+  amountMax: z.number().nullable(),
+  dateFrom: z.string().nullable(),
+  dateTo: z.string().nullable(),
 });
 
 export async function parseQuery(text: string): Promise<Filter> {

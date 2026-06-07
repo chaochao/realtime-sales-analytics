@@ -69,7 +69,9 @@ export function TableFilters({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Amount</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500">
+            Amount <span className="font-normal text-slate-400">filter in USD</span>
+          </label>
           <div className="flex gap-1">
             <input
               type="number"
