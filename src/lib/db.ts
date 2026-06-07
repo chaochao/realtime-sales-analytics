@@ -1,32 +1,13 @@
-import Database from "better-sqlite3";
+import { PrismaClient } from "@/src/generated/prisma/client";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 
-const g = globalThis as unknown as { __db?: Database.Database };
+const g = globalThis as unknown as { __prisma?: PrismaClient };
 
-function init(): Database.Database {
-  const db = new Database(process.env.SQLITE_PATH ?? "sales.db");
-  db.pragma("journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS transactions (
-      id TEXT PRIMARY KEY,
-      customerName TEXT NOT NULL,
-      amount REAL NOT NULL,
-      currency TEXT NOT NULL,
-      amountUsd REAL NOT NULL,
-      region TEXT NOT NULL,
-      salesRep TEXT NOT NULL,
-      date TEXT NOT NULL,
-      createdAt TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS corrections (
-      id TEXT PRIMARY KEY,
-      term TEXT NOT NULL,
-      field TEXT NOT NULL,
-      resolvedValue TEXT NOT NULL,
-      createdAt TEXT NOT NULL,
-      UNIQUE(term, field)
-    );
-  `);
-  return db;
+function init(): PrismaClient {
+  const url = process.env.DATABASE_PATH ?? "dev.db";
+  const adapter = new PrismaBetterSqlite3({ url });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new PrismaClient({ adapter } as any);
 }
 
-export const db = g.__db ?? (g.__db = init());
+export const prisma = g.__prisma ?? (g.__prisma = init());

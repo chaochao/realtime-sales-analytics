@@ -1,7 +1,7 @@
 import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
-import { db } from "@/src/lib/db";
+import { prisma } from "@/src/lib/db";
 import { createTransaction } from "@/src/lib/transactions";
 import { SUPPORTED_CURRENCIES } from "@/src/lib/currency";
 
@@ -19,26 +19,28 @@ const seedSchema = z.object({
 const REGIONS = ["West", "East", "North", "South"];
 const REPS = ["John Smith", "John Doe", "Sarah Lee", "Mike Chen", "Priya Patel"];
 
-function isEmpty(): boolean {
-  const row = db.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number };
-  return row.n === 0;
+async function isEmpty(): Promise<boolean> {
+  const count = await prisma.transaction.count();
+  return count === 0;
 }
 
-function fallbackSeed() {
+function fallbackSeed(): Promise<void> {
   const customers = ["Acme", "Globex", "Initech", "Umbrella", "Soylent", "Hooli", "Stark", "Wayne"];
+  const promises = [];
   let day = 0;
   for (let i = 0; i < 60; i++) {
     day = (day + 3) % 180;
     const date = new Date(Date.now() - day * 86400000).toISOString().slice(0, 10);
-    createTransaction({
+    promises.push(createTransaction({
       customerName: `${customers[i % customers.length]} ${i}`,
       amount: Math.round((2000 + Math.random() * 80000) / 100) * 100,
       currency: SUPPORTED_CURRENCIES[i % SUPPORTED_CURRENCIES.length],
       region: REGIONS[i % REGIONS.length],
       salesRep: REPS[i % REPS.length],
       date,
-    });
+    }));
   }
+  return Promise.all(promises).then(() => undefined);
 }
 
 async function llmSeed(): Promise<boolean> {
@@ -54,7 +56,7 @@ Realistic company customer names, amounts between 2,000 and 90,000, ISO dates (Y
     });
     for (const t of object.transactions) {
       const currency = SUPPORTED_CURRENCIES.includes(t.currency.toUpperCase()) ? t.currency : "USD";
-      createTransaction({ ...t, currency });
+      await createTransaction({ ...t, currency });
     }
     return true;
   } catch (err) {
@@ -68,9 +70,9 @@ let seeding: Promise<void> | null = null;
 export function ensureSeeded(): Promise<void> {
   if (seeding) return seeding;
   seeding = (async () => {
-    if (!isEmpty()) return;
+    if (!(await isEmpty())) return;
     const ok = await llmSeed();
-    if (!ok && isEmpty()) fallbackSeed();
+    if (!ok && (await isEmpty())) await fallbackSeed();
   })();
   return seeding;
 }
