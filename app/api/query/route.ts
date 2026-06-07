@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
       status: "clarify",
       interpretation: result.interpretation,
       ambiguities: result.ambiguities,
+      partialFilter: result.resolved,
     });
   }
 

@@ -32,7 +32,7 @@ export function ChatPanel({
 
   async function send(text: string) {
     setMessages((m) => [...m, { role: "user", text }]);
-    const base = correctionBase;
+    const base = correctionBase ?? pendingConfirm?.filter ?? null;
     setPendingConfirm(null);
     setCorrectionBase(null);
     setLoading(true);
@@ -43,7 +43,9 @@ export function ChatPanel({
         const label = amb.candidates.length
           ? `Did you mean one of these for ${String(amb.field)} "${amb.term}"?`
           : `No ${String(amb.field)} matching "${amb.term}" found.`;
-        setMessages((m) => [...m, { role: "clarify", text: label, ambiguity: amb, baseFilter: {} }]);
+        const partial = res.partialFilter ?? {};
+        setMessages((m) => [...m, { role: "clarify", text: label, ambiguity: amb, baseFilter: partial }]);
+        setCorrectionBase(partial);
       } else {
         setPendingConfirm({ filter: res.filter, interpretation: res.interpretation });
       }
@@ -58,11 +60,7 @@ export function ChatPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ term: amb.term, field: amb.field, resolvedValue: value, baseFilter }),
     }).then((r) => r.json());
-    setMessages((m) => [
-      ...m,
-      { role: "agent", text: `Got it — "${amb.term}" = ${value}. Showing: ${res.interpretation}` },
-    ]);
-    onResults(res.filter ?? null);
+    setPendingConfirm({ filter: res.filter, interpretation: res.interpretation });
   }
 
   function handleYes() {
