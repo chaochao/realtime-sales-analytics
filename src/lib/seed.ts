@@ -67,7 +67,7 @@ Realistic company customer names, amounts between 2,000 and 90,000, ISO dates (Y
       await createTransaction({ ...t, currency });
     }
     const count = await prisma.transaction.count();
-    console.log(`[seed] LLM seed complete — ${count} transactions ready.`);
+    console.log(`[seed] ☀️ Database seeded with ${count} LLM-generated transactions.`);
     return true;
   } catch (err) {
     console.warn("[seed] LLM seed failed, will use fallback:", err);
