@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   await ensureSeeded();
-  const { text, baseFilter } = (await req.json()) as { text: string; baseFilter?: Record<string, unknown> };
+  const { text, baseFilter, today } = (await req.json()) as { text: string; baseFilter?: Record<string, unknown>; today?: string };
 
-  const draft = await parseQuery(text);
+  const draft = await parseQuery(text, today);
   const known = {
     salesRep: await distinctValues("salesRep"),
     region: await distinctValues("region"),

@@ -36,7 +36,7 @@ export function ChatPanel({
     return fetch("/api/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, baseFilter }),
+      body: JSON.stringify({ text, baseFilter, today: new Date().toLocaleDateString("en-CA") }),
     }).then((r) => r.json());
   }
 

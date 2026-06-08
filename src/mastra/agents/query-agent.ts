@@ -14,13 +14,14 @@ const filterSchema = z.object({
   dateTo: z.string().nullable(),
 });
 
-export async function parseQuery(text: string): Promise<Filter> {
+export async function parseQuery(text: string, today?: string): Promise<Filter> {
   if (!process.env.OPENAI_API_KEY) return {};
+  const date = today ?? new Date().toLocaleDateString("en-CA");
   try {
     const { object } = await generateObject({
       model: openai("gpt-4o-mini"),
       schema: filterSchema,
-      prompt: `Extract sales transaction filters from this request. Use partial names exactly as typed — do NOT guess full names. Omit fields not mentioned. Dates: ISO (YYYY-MM-DD). Amounts: numbers only.
+      prompt: `Today is ${date}. Extract sales transaction filters from this request. Use partial names exactly as typed — do NOT guess full names. Omit fields not mentioned. Dates: ISO (YYYY-MM-DD). Amounts: numbers only.
 
 Field guidance:
 - salesRep: the sales representative (a person's name, e.g. "john", "sarah lee")
