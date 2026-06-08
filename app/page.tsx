@@ -85,6 +85,11 @@ function DashboardContent() {
   }
 
   useEffect(() => {
+    const pending = sessionStorage.getItem("pendingInsight");
+    if (pending) {
+      setInsights((prev) => [pending, ...prev]);
+      sessionStorage.removeItem("pendingInsight");
+    }
     loadAll();
     const es = new EventSource("/api/stream");
     es.onmessage = (e) => {

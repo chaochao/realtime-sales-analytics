@@ -18,11 +18,14 @@ export function TransactionForm() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    await fetch("/api/transactions", {
+    const res = await fetch("/api/transactions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, amount: Number(form.amount) }),
-    });
+    }).then((r) => r.json());
+    if (res.insight?.message) {
+      sessionStorage.setItem("pendingInsight", res.insight.message);
+    }
     router.push("/");
   }
 
