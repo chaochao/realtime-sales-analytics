@@ -46,7 +46,7 @@ The LLM boundary is intentionally thin. The AI does two things only:
 Everything downstream is deterministic:
 - **Resolver** — matches the draft against real DB values (case-insensitive substring), flags ambiguity when a term matches more than one candidate (e.g. "John" → John Smith / John Doe), and applies stored corrections first
 - **Analytics** — pure function over the transaction list, no LLM involved
-- **Drift detection** — z-score of the new deal against the region's prior deals; fires when `|z| > 2` with at least 3 prior deals
+- **Drift detection** — z-score of the new deal against the region's prior deals; fires when `|z| > 1.5` with at least 3 prior deals
 - **Corrections** — stored in SQLite, consulted before ambiguity checks so the same term auto-resolves next time
 
 Real-time updates use an in-process `EventEmitter` as the SSE bus (a `globalThis` singleton to survive Next.js HMR). When a transaction is created via `POST /api/transactions`, the server computes new analytics, checks for drift, and broadcasts `{ transaction, analytics, insight }` to all connected clients. The dashboard updates cards and table without a page refresh.
@@ -147,9 +147,9 @@ The agent uses a z-score:
 z = (new deal − region average) / region std dev
 ```
 
-An alert fires when `|z| > 2` with at least 3 prior deals in that region.
+An alert fires when `|z| > 1.5` with at least 3 prior deals in that region.
 
-- **2σ** — at a normal distribution, only ~4.6% of deals randomly exceed this. Sensitive enough to catch real anomalies without being noisy.
+- **1.5σ** — at a normal distribution, ~13% of deals randomly exceed this. More sensitive than the standard 2σ, tuned to catch meaningful anomalies earlier at the cost of slightly more noise.
 - **3 prior deals minimum** — fewer data points make the std dev unreliable, producing false alerts on the first few deals of a new region.
 
 **How it surfaces:**
