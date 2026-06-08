@@ -181,28 +181,3 @@ All logic is in `src/lib/agent/drift.ts`. The insight travels through the same S
 
 ---
 
-### Correction Learning
-
-Corrections are stored in SQLite (`Correction` table) keyed by `(term, field)`. `saveCorrection` does an upsert, so corrections are always up to date. Only `salesRep` and `customer` fields are stored — region and currency are finite/well-known and fuzzy matching handles them without corrections.
-
-### Bugs Fixed
-
-**Filter context lost after correction**
-When a query returned a clarify response (ambiguous term), the already-resolved fields (e.g. `region = West`) were not being passed back to the frontend. Free-text corrections sent with no `baseFilter` lost those fields.
-Fix: backend returns `partialFilter: result.resolved` on clarify; frontend uses it as `correctionBase` so the next message carries resolved fields along.
-
-**Candidate button skipped confirmation**
-Clicking a clarify candidate (e.g. "John Doe") applied the filter immediately without showing a confirmation bubble.
-Fix: `choose()` builds the filter locally and calls `setPendingConfirm()`. No server call, no premature save.
-
-**Region saved as correction (e.g. "est → West")**
-Clicking "West" in a clarify dialog for "est" saved the correction to the DB. Next time any query contained "est" it auto-resolved to West, overriding the user's intent.
-Fix: corrections are only saved for `salesRep` and `customer`, not region or currency.
-
-**Correction not saved when correction table resolves the query**
-When "john → John Smith" was already in the correction table, queries resolved directly (no clarify). If the user then corrected "john" to mean "John Doe", the correction was never updated.
-Fix: backend returns `draft` (raw LLM output before resolution) in OK responses. The frontend stores `draft` in `pendingConfirm` and carries it through the correction flow. On confirm, it compares the original term ("john") with the new resolved value ("John Doe") and saves the updated correction.
-
-**Correction info lost between state updates**
-`pendingAmbiguity` was a separate state variable that got cleared by `send()` before `handleYes()` could use it.
-Fix: correction info is now embedded directly in `pendingConfirm` as `correction?: { term, field }`, so it travels with the confirmation and cannot be lost between renders.
