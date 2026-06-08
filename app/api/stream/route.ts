@@ -1,3 +1,8 @@
+// GET /api/stream
+// Server-Sent Events (SSE) endpoint. Keeps a long-lived connection open and pushes
+// real-time transaction events (including drift insights) to the client as they happen.
+// Each event is a JSON-serialized TransactionEvent sent as "data: {...}\n\n".
+// The connection is cleaned up automatically when the client disconnects.
 import { subscribe } from "@/src/lib/events";
 
 export const dynamic = "force-dynamic";

@@ -1,3 +1,9 @@
+// GET  /api/transactions?salesRep=&region=&customer=&currency=&dateFrom=&dateTo=&amountMin=&amountMax=
+// Returns transactions matching the given filter params (all optional).
+//
+// POST /api/transactions  body: NewTransactionInput
+// Creates a transaction, runs drift detection against prior deals in the same region,
+// recomputes analytics, and broadcasts the result to all SSE subscribers.
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSeeded } from "@/src/lib/seed";
 import { createTransaction, queryTransactions, regionPriorAmountsUsd } from "@/src/lib/transactions";

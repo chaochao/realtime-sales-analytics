@@ -1,3 +1,6 @@
+// GET /api/analytics
+// Returns aggregated analytics over all transactions:
+// total revenue, transaction count, avg deal size, revenue by region, top reps.
 import { NextResponse } from "next/server";
 import { ensureSeeded } from "@/src/lib/seed";
 import { queryTransactions } from "@/src/lib/transactions";

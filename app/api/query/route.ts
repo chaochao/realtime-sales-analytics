@@ -1,3 +1,9 @@
+// POST /api/query  body: { text, today?, baseFilter? }
+// Parses a natural-language query into a structured filter via LLM (parseQuery),
+// then resolves partial/ambiguous field values against known DB values (resolveFilter).
+// Returns status "clarify" when a term matches multiple candidates (frontend shows buttons),
+// or status "ok" with the resolved filter and a human-readable interpretation string.
+// baseFilter carries over previously confirmed filters so the user can refine incrementally.
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSeeded } from "@/src/lib/seed";
 import { parseQuery } from "@/src/mastra/agents/query-agent";
@@ -11,13 +17,14 @@ export async function POST(req: NextRequest) {
   await ensureSeeded();
   const { text, baseFilter, today } = (await req.json()) as { text: string; baseFilter?: Record<string, unknown>; today?: string };
 
-  const draft = await parseQuery(text, today);
-  const known = {
-    salesRep: await distinctValues("salesRep"),
-    region: await distinctValues("region"),
-    currency: await distinctValues("currency"),
-    customer: await distinctValues("customerName"),
-  };
+  const [draft, salesRep, region, currency, customer] = await Promise.all([
+    parseQuery(text, today),
+    distinctValues("salesRep"),
+    distinctValues("region"),
+    distinctValues("currency"),
+    distinctValues("customerName"),
+  ]);
+  const known = { salesRep, region, currency, customer };
   const result = await resolveFilter(draft, known, lookupCorrection);
 
   if (result.needsClarification) {

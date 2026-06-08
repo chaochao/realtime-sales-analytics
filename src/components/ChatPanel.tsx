@@ -21,6 +21,15 @@ export function ChatPanel({
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Correction flow state:
+  // 1. Agent returns a result → pendingConfirm holds the interpreted filter awaiting Yes/No.
+  // 2. User clicks No → correctionBase (the current filter) and correctionDraft (the raw LLM
+  //    parse) are saved, pendingConfirm is cleared, and the input becomes a correction prompt.
+  // 3. User types a correction → the next query carries correctionBase so the agent refines
+  //    rather than restarting. If the resolved value differs from correctionDraft, a correction
+  //    is saved to the DB via /api/correction so it applies automatically in the future.
+  // 4. pendingAmbiguity tracks an unresolved term when the agent asks the user to pick a candidate.
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [correctionBase, setCorrectionBase] = useState<Filter | null>(null);
   const [pendingAmbiguity, setPendingAmbiguity] = useState<Ambiguity | null>(null);

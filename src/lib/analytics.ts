@@ -4,7 +4,7 @@ function sumBy(txns: Transaction[], key: "region" | "salesRep") {
   const map = new Map<string, number>();
   for (const t of txns) map.set(t[key], (map.get(t[key]) ?? 0) + t.amountUsd);
   return [...map.entries()]
-    .map(([k, revenueUsd]) => ({ k, revenueUsd }))
+    .map(([name, revenueUsd]) => ({ name, revenueUsd }))
     .sort((a, b) => b.revenueUsd - a.revenueUsd);
 }
 
@@ -16,7 +16,7 @@ export function computeAnalytics(txns: Transaction[]): Analytics {
     totalRevenueUsd,
     transactionCount,
     avgDealSizeUsd,
-    revenueByRegion: sumBy(txns, "region").map((x) => ({ region: x.k, revenueUsd: x.revenueUsd })),
-    topReps: sumBy(txns, "salesRep").map((x) => ({ salesRep: x.k, revenueUsd: x.revenueUsd })),
+    revenueByRegion: sumBy(txns, "region").map((x) => ({ region: x.name, revenueUsd: x.revenueUsd })),
+    topReps: sumBy(txns, "salesRep").map((x) => ({ salesRep: x.name, revenueUsd: x.revenueUsd })),
   };
 }
