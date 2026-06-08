@@ -58,7 +58,7 @@ Real-time updates use an in-process `EventEmitter` as the SSE bus (a `globalThis
 | SSE over WebSockets | Native `EventSource`, no extra server | One-directional only (server → client) |
 | SQLite over Postgres | Zero setup, ships with the app | Not suitable for multi-instance deployments |
 | Corrections in SQLite | Deterministic lookups, survives restarts | Not shared across users in a multi-user setup |
-| Static exchange rates | No external dependency | Rates are not live; analytics are approximate for non-USD currencies |
+| Currency exchange rates | No external dependency | Rates are not live; analytics are approximate for non-USD currencies |
 | Thin LLM boundary | Keeps drift/analytics fast, testable, and free | NL parsing quality depends on the LLM; falls back to empty filter if key is missing |
 | Prisma ORM | Type-safe queries, Prisma Studio for DB inspection | Requires an adapter layer for SQLite in Prisma v7 |
 
