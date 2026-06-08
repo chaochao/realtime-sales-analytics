@@ -77,13 +77,19 @@ Real-time updates use an in-process `EventEmitter` as the SSE bus (a `globalThis
 The correction learning system looked simple on paper: when a user confirms a filter, save the original search term mapped to the resolved value, then auto-apply it next time. In practice, the initial design had three silent failure modes that required rethinking how state was tracked through the confirmation flow.
 
 **Problem 1 — Corrections never updated when the DB already had one.**
-Once "john → John Smith" was stored, future queries resolved directly (no ambiguity shown). If the user later meant "John Doe", the correction flow was never triggered — there was nothing to correct because the resolver had already silently applied the old mapping. The fix: the backend now always returns `draft` (the raw LLM output, before the corrections table is consulted) alongside the resolved filter. The frontend stores `draft` in `pendingConfirm` and, on confirmation, compares the original term in `draft` against the newly resolved value. If they differ, the correction is updated — even when resolution happened silently.
+Once "john → John Smith" was stored, future queries resolved directly (no ambiguity shown). If the user later meant "John Doe", the correction flow was never triggered — there was nothing to correct because the resolver had already silently applied the old mapping.
+
+**The fix:** The backend now always returns `draft` (the raw LLM output, before the corrections table is consulted) alongside the resolved filter. The frontend stores `draft` in `pendingConfirm` and, on confirmation, compares the original term in `draft` against the newly resolved value. If they differ, the correction is updated — even when resolution happened silently.
 
 **Problem 2 — Wrong fields were being saved as corrections.**
-When the resolver asked "did you mean West or East?" and the user clicked "West", the system saved `"est" → "West"` as a correction. On the next query, any text containing "est" (e.g. "best", "latest", "East") auto-resolved to West. Region and currency have a small, well-known set of values that fuzzy matching handles reliably — corrections are only meaningful for open-ended fields like `salesRep` and `customer`. The fix: corrections are gated to those two fields only.
+When the resolver asked "did you mean West or East?" and the user clicked "West", the system saved `"est" → "West"` as a correction. On the next query, any text containing "est" (e.g. "best", "latest", "East") auto-resolved to West. Region and currency have a small, well-known set of values that fuzzy matching handles reliably — corrections are only meaningful for open-ended fields like `salesRep` and `customer`.
+
+**The fix:** Corrections are gated to those two fields only.
 
 **Problem 3 — Correction context disappeared between state updates.**
-The ambiguity context needed to save a correction (which term, which field) lived in a separate `pendingAmbiguity` state variable. When the user confirmed, `send()` had already cleared `pendingAmbiguity` before `handleYes()` could read it, so the correction was silently dropped. The fix: correction metadata is now embedded directly inside `pendingConfirm` as `correction?: { term, field }`. It travels with the confirmation object and cannot be lost between renders.
+The ambiguity context needed to save a correction (which term, which field) lived in a separate `pendingAmbiguity` state variable. When the user confirmed, `send()` had already cleared `pendingAmbiguity` before `handleYes()` could read it, so the correction was silently dropped.
+
+**The fix:** Correction metadata is now embedded directly inside `pendingConfirm` as `correction?: { term, field }`. It travels with the confirmation object and cannot be lost between renders.
 
 The root cause across all three: the correction save was treated as a side effect of confirmation, not a first-class part of the confirmation state. Once `correction` became part of `pendingConfirm`, the data flow became explicit and the edge cases resolved naturally.
 
