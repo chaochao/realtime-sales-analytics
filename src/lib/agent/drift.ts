@@ -1,7 +1,7 @@
 import type { DriftInsight } from "@/src/lib/types";
 
 const MIN_PRIOR_DEALS = 3;
-const Z_THRESHOLD = 2;
+const Z_THRESHOLD = 1.5;
 
 function mean(xs: number[]) {
   return xs.reduce((s, x) => s + x, 0) / xs.length;

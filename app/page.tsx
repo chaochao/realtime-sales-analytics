@@ -89,9 +89,6 @@ function DashboardContent() {
     const es = new EventSource("/api/stream");
     es.onmessage = (e) => {
       const data = JSON.parse(e.data);
-      if (data.type === "connected" && data.insights?.length) {
-        setInsights(data.insights);
-      }
       if (data.type === "transaction") {
         setAnalytics(data.analytics);
         setRows((prev) => [data.transaction, ...prev]);
