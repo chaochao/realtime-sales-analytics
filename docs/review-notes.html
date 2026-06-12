@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Review Notes – Correction Learning &amp; Scaling</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.6; padding: 2rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 2.5rem; }
+    section { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.75rem; margin-bottom: 2rem; }
+    h2 { font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    h3 { font-size: 0.9rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; margin: 1.25rem 0 0.5rem; }
+    p { color: #334155; font-size: 0.95rem; margin-bottom: 0.75rem; }
+    p:last-child { margin-bottom: 0; }
+
+    /* Flow diagram */
+    .flow { display: flex; flex-direction: column; gap: 0; margin: 1rem 0; }
+    .flow-row { display: flex; align-items: stretch; }
+    .flow-box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.6rem 1rem; font-size: 0.85rem; background: #f8fafc; flex: 1; }
+    .flow-box.highlight { background: #eff6ff; border-color: #93c5fd; }
+    .flow-box.warn { background: #fff7ed; border-color: #fdba74; }
+    .flow-box.success { background: #f0fdf4; border-color: #86efac; }
+    .flow-box b { display: block; font-weight: 600; color: #1e293b; font-size: 0.8rem; margin-bottom: 0.2rem; }
+    .flow-box span { color: #475569; }
+    .arrow { text-align: center; color: #94a3b8; padding: 0.2rem 0; font-size: 1rem; }
+
+    /* Code */
+    pre { background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; font-size: 0.8rem; overflow-x: auto; margin: 0.75rem 0; line-height: 1.55; }
+    code { font-family: "JetBrains Mono", "Fira Code", Consolas, monospace; }
+    .comment { color: #64748b; }
+    .kw { color: #7dd3fc; }
+    .str { color: #86efac; }
+    .fn { color: #fde68a; }
+
+    /* Edge case boxes */
+    .edge { border-left: 3px solid #f59e0b; background: #fffbeb; border-radius: 0 6px 6px 0; padding: 0.75rem 1rem; margin: 0.75rem 0; font-size: 0.88rem; color: #78350f; }
+    .edge strong { display: block; margin-bottom: 0.2rem; }
+
+    /* Two-col layout */
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.75rem; }
+    @media (max-width: 680px) { .cols { grid-template-columns: 1fr; } }
+    .col-box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; }
+    .col-box h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .col-box ul { padding-left: 1.1rem; font-size: 0.85rem; color: #475569; }
+    .col-box ul li { margin-bottom: 0.3rem; }
+    .col-box.now { background: #f8fafc; }
+    .col-box.future { background: #f0fdf4; border-color: #bbf7d0; }
+
+    /* Badge */
+    .badge { display: inline-block; border-radius: 4px; padding: 0.1rem 0.45rem; font-size: 0.72rem; font-weight: 600; vertical-align: middle; margin-left: 0.4rem; }
+    .badge-blue { background: #dbeafe; color: #1d4ed8; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .badge-green { background: #dcfce7; color: #15803d; }
+  </style>
+</head>
+<body>
+
+<h1>Code Review Notes</h1>
+<p class="subtitle">Real-Time Sales Analytics — Q2: Correction Learning &nbsp;·&nbsp; Q4: Scaling</p>
+
+<!-- ─────────────────────── Q2 ─────────────────────── -->
+<section>
+  <h2>Q2 — How does correction learning work?</h2>
+
+  <p>
+    When a user types a natural-language query, the LLM parses it into a structured <em>draft filter</em>.
+    The resolver then turns that draft into real DB values — first checking stored corrections, then falling back to substring matching.
+    When the user confirms an interpretation that involved an ambiguous term, that mapping is saved so the same term resolves automatically next time.
+  </p>
+
+  <h3>Happy path</h3>
+  <div class="flow">
+    <div class="flow-row">
+      <div class="flow-box highlight">
+        <b>1. User query</b>
+        <span>"Show john's deals in the West"</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>2. LLM parse → draft filter <span class="badge badge-blue">NL extraction</span></b>
+        <span><code>{ salesRep: "john", region: "West" }</code></span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box highlight">
+        <b>3. Resolver checks corrections DB first <span class="badge badge-blue">resolver.ts:34</span></b>
+        <span><code>lookupCorrection("john", "salesRep")</code> → <em>null</em> (first time)</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box warn">
+        <b>4. Substring match → ambiguity <span class="badge badge-amber">resolver.ts:40</span></b>
+        <span>"john" matches: <strong>John Smith</strong>, <strong>John Doe</strong> → asks user to pick</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>5. User selects "John Smith" → confirmation prompt</b>
+        <span>"I'm reading this as: salesRep = John Smith. Is that right?"</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>6. User clicks "Yes, apply" → correction saved <span class="badge badge-green">ChatPanel.tsx:110</span></b>
+        <span><code>POST /api/correction { term: "john", field: "salesRep", resolvedValue: "John Smith" }</code></span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>7. Next query: "show john's Q2 deals"</b>
+        <span><code>lookupCorrection("john", "salesRep")</code> → "John Smith" immediately, no prompt</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>Code: saving &amp; looking up corrections</h3>
+  <pre><code><span class="comment">// corrections.ts — upsert so the same term can be updated later</span>
+<span class="kw">export async function</span> <span class="fn">saveCorrection</span>(term, field, resolvedValue) {
+  <span class="kw">await</span> prisma.correction.<span class="fn">upsert</span>({
+    where: { term_field: { term: <span class="fn">normalizeTerm</span>(term), field } },
+    update: { resolvedValue },        <span class="comment">// overwrites stale mapping</span>
+    create: { id, term, field, resolvedValue, createdAt },
+  });
+}
+
+<span class="comment">// resolver.ts — correction check comes BEFORE substring matching</span>
+<span class="kw">const</span> corrected = <span class="kw">await</span> <span class="fn">lookupCorrection</span>(<span class="fn">normalizeTerm</span>(term), field);
+<span class="kw">if</span> (corrected) {
+  resolved[field] = corrected;
+  <span class="kw">continue</span>;        <span class="comment">// skip ambiguity entirely</span>
+}</code></pre>
+
+  <h3>The tricky edge cases</h3>
+
+  <div class="edge">
+    <strong>Edge case 1 — Correction already exists, user wants a different one</strong>
+    Once "john → John Smith" is stored, the resolver short-circuits before ambiguity runs.
+    The user has no button to click. Solution: the "No" button triggers a <em>correction flow</em> —
+    it saves <code>correctionBase</code> and <code>correctionDraft</code>, lets the user retype,
+    and if the newly resolved value differs from the draft, calls <code>/api/correction</code> to overwrite the old mapping.
+    (ChatPanel.tsx:77–88)
+  </div>
+
+  <div class="edge">
+    <strong>Edge case 2 — Ambiguity resolved via button, not free text</strong>
+    When the user clicks a candidate button (not the Yes/No confirm), the term is still ambiguous by definition,
+    so the <code>correction</code> payload is attached to <code>pendingConfirm</code> at that point.
+    "Yes, apply" then fires the save. (ChatPanel.tsx:100–103)
+  </div>
+
+  <div class="edge">
+    <strong>Edge case 3 — Cross-field fallback</strong>
+    If "john" matches no salesRep, the resolver checks the <em>customer</em> field instead (and vice versa).
+    This silently promotes the field, which is then reported in the interpretation string.
+    (resolver.ts:43–50)
+  </div>
+
+  <h3>State variables that drive the flow</h3>
+  <pre><code><span class="comment">// ChatPanel.tsx — four pieces of state coordinate the confirmation + correction flow</span>
+pendingConfirm    <span class="comment">// holds filter + interpretation awaiting Yes/No</span>
+correctionBase    <span class="comment">// the last confirmed filter; carried into the next query on "No"</span>
+correctionDraft   <span class="comment">// the raw LLM parse; used to detect if the value changed</span>
+pendingAmbiguity  <span class="comment">// the unresolved term when the agent asks the user to pick</span></code></pre>
+</section>
+
+<!-- ─────────────────────── Q4 ─────────────────────── -->
+<section>
+  <h2>Q4 — How would you scale this beyond a single instance?</h2>
+
+  <p>
+    The current design has two hard single-instance constraints: an in-process event bus and a file-locked SQLite database.
+    Both are intentional trade-offs for zero-infrastructure local development.
+    Scaling to multiple instances requires replacing each with a shared equivalent.
+  </p>
+
+  <h3>Current architecture</h3>
+  <pre><code><span class="comment">// events.ts — globalThis keeps one bus across Next.js hot reloads</span>
+<span class="kw">const</span> g = globalThis <span class="kw">as</span> { __bus?: EventEmitter };
+<span class="kw">const</span> bus = g.__bus ?? (g.__bus = <span class="kw">new</span> <span class="fn">EventEmitter</span>());
+
+<span class="comment">// publishTransaction → bus.emit("event", payload)</span>
+<span class="comment">// subscribe        → bus.on("event", handler)  (one listener per open SSE tab)</span></code></pre>
+
+  <p>
+    When <code>POST /api/transactions</code> fires, it calls <code>publishTransaction</code>.
+    Every open SSE connection has registered a handler via <code>subscribe</code>.
+    This works perfectly within one process — but a second instance has its own <code>globalThis</code>,
+    so transactions created on instance A are invisible to tabs connected to instance B.
+  </p>
+
+  <h3>What breaks at scale and how to fix it</h3>
+  <div class="cols">
+    <div class="col-box now">
+      <h4>Today (single instance)</h4>
+      <ul>
+        <li>Event bus: <code>EventEmitter</code> in memory</li>
+        <li>Database: SQLite via Prisma + better-sqlite3</li>
+        <li>SSE clients: all live in the same process</li>
+        <li>Corrections: SQLite rows, read/written locally</li>
+      </ul>
+    </div>
+    <div class="col-box future">
+      <h4>Multi-instance path</h4>
+      <ul>
+        <li>Event bus → <strong>Redis pub/sub</strong> (publish on one node, all nodes subscribe)</li>
+        <li>Database → <strong>Postgres</strong> (shared, concurrent-safe)</li>
+        <li>SSE routes stay the same — just swap <code>subscribe()</code> source</li>
+        <li>Corrections table moves with the DB, no logic change</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Minimal code change needed</h3>
+  <pre><code><span class="comment">// Today — subscribe is a local EventEmitter listener</span>
+<span class="kw">export function</span> <span class="fn">subscribe</span>(handler) {
+  bus.<span class="fn">on</span>(<span class="str">"event"</span>, handler);
+  <span class="kw">return</span> () => bus.<span class="fn">off</span>(<span class="str">"event"</span>, handler);
+}
+
+<span class="comment">// After — subscribe listens on a Redis channel instead</span>
+<span class="kw">export function</span> <span class="fn">subscribe</span>(handler) {
+  <span class="kw">const</span> sub = redis.<span class="fn">duplicate</span>();
+  sub.<span class="fn">subscribe</span>(<span class="str">"transactions"</span>, (msg) => handler(<span class="fn">JSON.parse</span>(msg)));
+  <span class="kw">return</span> () => sub.<span class="fn">unsubscribe</span>();
+}
+
+<span class="comment">// publishTransaction changes similarly — redis.publish("transactions", JSON.stringify(event))</span>
+<span class="comment">// Everything else (SSE route, analytics, drift) stays identical.</span></code></pre>
+
+  <h3>What does NOT need to change</h3>
+  <p>
+    The SSE route handler, analytics computation, drift detection, and correction lookup are all stateless relative to the bus.
+    They receive an event or a DB query result and return a value.
+    Swapping the bus and DB underneath them requires no logic changes — only the two transport functions (<code>publishTransaction</code>, <code>subscribe</code>) and the Prisma datasource URL.
+  </p>
+
+  <h3>Other limitations worth mentioning</h3>
+  <div class="edge">
+    <strong>Static FX rates</strong>
+    Currency conversion uses hardcoded rates in <code>currency.ts</code>.
+    In a production multi-tenant system these would come from a live rates API or a daily-updated table.
+  </div>
+  <div class="edge">
+    <strong>No auth / single user</strong>
+    Corrections are global — there's no user ID on the <code>Correction</code> row.
+    Multi-user would require scoping corrections by <code>userId</code> and adding auth middleware.
+  </div>
+</section>
+
+<!-- ─────────────────────── Step-by-step guide ─────────────────────── -->
+<section>
+  <h2>Step-by-step: How correction learning works</h2>
+
+  <p>
+    This is the full walkthrough of what happens from the moment a user types a query
+    to the moment a correction is stored and silently applied on future queries.
+  </p>
+
+  <div class="flow">
+
+    <div class="flow-row">
+      <div class="flow-box highlight">
+        <b>Step 1 — User types a query</b>
+        <span>e.g. <em>"Show me john's deals in the West"</em></span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>Step 2 — LLM parses the text into a draft filter</b>
+        <span>
+          <code>POST /api/query { text: "john's deals in the West" }</code><br/>
+          LLM returns: <code>{ salesRep: "john", region: "West" }</code>
+        </span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <div class="flow-row">
+      <div class="flow-box highlight">
+        <b>Step 3 — Resolver checks the corrections table first (field-scoped)</b>
+        <span>
+          <code>lookupCorrection("john", "salesRep")</code><br/>
+          First time → returns <code>null</code>. Skip to step 4.<br/>
+          Subsequent times → returns <code>"John Smith"</code>. Jump straight to step 8.<br/>
+          <em>Note: does NOT check the customer field here — corrections are keyed by <code>(term, field)</code>.
+          A "john → John Smith" correction saved under <code>customer</code> is a separate row and is not consulted.</em>
+        </span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>Step 4 — Substring matching against known DB values</b>
+        <span>
+          Exact match first; if none, substring.<br/>
+          <code>"john"</code> matches: <strong>John Smith</strong>, <strong>John Doe</strong> → 2 candidates → ambiguity
+        </span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <div class="flow-row">
+      <div class="flow-box warn">
+        <b>Step 5 — Agent asks the user to pick (clarify UI)</b>
+        <span>
+          Chat shows: <em>"Did you mean one of these for salesRep 'john'?"</em><br/>
+          Two buttons appear: <strong>John Smith</strong> &nbsp; <strong>John Doe</strong>
+        </span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>Step 6 — User clicks a candidate</b>
+        <span>
+          e.g. clicks <strong>John Smith</strong>.<br/>
+          <code>pendingConfirm</code> is set with <code>{ filter: { salesRep: "John Smith", region: "West" }, correction: { term: "john", field: "salesRep" } }</code>
+        </span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>Step 7 — Agent shows confirmation prompt</b>
+        <span>
+          <em>"I'm reading this as: salesRep = John Smith, region = West. Is that right?"</em><br/>
+          Two buttons: <strong>Yes, apply</strong> &nbsp; <strong>No</strong>
+        </span>
+      </div>
+    </div>
+    <div class="arrow">↓ (two paths)</div>
+
+    <div class="cols">
+      <div class="col-box future">
+        <h4>Path A — User clicks "Yes, apply"</h4>
+        <ul>
+          <li>Filter is applied to the dashboard</li>
+          <li><code>POST /api/correction { term: "john", field: "salesRep", resolvedValue: "John Smith" }</code></li>
+          <li>Saved via <code>correction.upsert</code> (overwrites if exists)</li>
+          <li>Next query with "john" → step 3 returns "John Smith" immediately</li>
+        </ul>
+      </div>
+      <div class="col-box now">
+        <h4>Path B — User clicks "No" OR just types a follow-up</h4>
+        <ul>
+          <li>Clicking No sets <code>correctionBase</code> and <code>correctionDraft</code> explicitly, clears the prompt</li>
+          <li>Typing while the prompt is still visible works too — <code>send()</code> reads <code>pendingConfirm?.filter</code> and <code>pendingConfirm?.draft</code> as fallbacks (line 54–56)</li>
+          <li>Either way, the next query is sent with the resolved filter as context and the original LLM term is preserved for correction detection</li>
+          <li>If the newly resolved value differs from the draft, a new correction is saved automatically</li>
+        </ul>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>Step 8 — Future queries auto-resolve</b>
+        <span>
+          "john" → <code>lookupCorrection</code> → "John Smith" → no ambiguity prompt, no button, no confirmation.<br/>
+          The user sees the result immediately.
+        </span>
+      </div>
+    </div>
+
+  </div>
+
+  <h3>What gets stored in the database</h3>
+  <pre><code><span class="comment">-- Correction table row after the flow above</span>
+term          = <span class="str">"john"</span>          <span class="comment">-- normalized (trimmed, lowercased)</span>
+field         = <span class="str">"salesRep"</span>
+resolvedValue = <span class="str">"John Smith"</span>
+createdAt     = <span class="str">"2026-06-09T..."</span>
+
+<span class="comment">-- Composite unique key: (term, field)</span>
+<span class="comment">-- So "john" as salesRep and "john" as customer are separate rows</span></code></pre>
+
+  <h3>The "No" path in detail</h3>
+  <p>
+    When the user clicks No, the UI saves two pieces of state:
+    <code>correctionBase</code> (the last resolved filter) and <code>correctionDraft</code> (the raw LLM output before resolution).
+    The next message the user sends is passed to <code>/api/query</code> with <code>correctionBase</code> as context,
+    so the LLM refines rather than restarts.
+    After the new resolution, the code compares the new resolved value against <code>correctionDraft</code> field by field —
+    if they differ, that's the user's correction, and it's saved to the DB.
+  </p>
+
+  <h3>Key invariant</h3>
+  <div class="edge">
+    <strong>Corrections are checked before matching, not after.</strong>
+    This means a stored correction completely bypasses ambiguity detection. Once "john → John Smith" is saved,
+    the substring match that found two candidates never runs. The only way to change it is through the "No" path,
+    which explicitly re-runs the flow and overwrites the stored row via <code>upsert</code>.
+  </div>
+  <div class="edge">
+    <strong>Corrections are field-scoped — cross-field lookup does not apply.</strong>
+    The correction lookup uses the exact field being resolved: <code>lookupCorrection("john", "salesRep")</code>.
+    It does not fall back to checking the <code>customer</code> correction for the same term.
+    Cross-field logic only kicks in later, during <em>substring matching</em>, when zero salesRep candidates are found.
+    A "john → John Smith" correction saved under <code>customer</code> is a separate DB row and is invisible to the salesRep resolution path.
+  </div>
+
+</section>
+
+<!-- ─────────────────────── Clarify UI trigger ─────────────────────── -->
+<section>
+  <h2>When does the "Did you mean…?" UI appear?</h2>
+
+  <p>
+    The disambiguation UI shows when a text term <strong>does not resolve to exactly one known value</strong>
+    and isn't already covered by a saved correction. Concretely: after the LLM produces a draft filter,
+    <code>resolveFilter</code> matches each text field (<code>salesRep</code>, <code>region</code>, <code>customer</code>, <code>currency</code>)
+    against the known DB values. Anything other than a single clean match becomes an <em>ambiguity</em>,
+    the API returns <code>status: "clarify"</code>, and <code>ChatPanel</code> renders the bubble + candidate buttons.
+  </p>
+
+  <h3>The matching logic <span class="badge badge-blue">resolver.ts:9</span></h3>
+  <pre><code><span class="comment">// matchCandidates — exact first, then substring fallback</span>
+<span class="kw">const</span> exact = known.<span class="fn">filter</span>((k) => k.<span class="fn">toLowerCase</span>() === t);
+<span class="kw">if</span> (exact.length) <span class="kw">return</span> exact;
+<span class="kw">return</span> known.<span class="fn">filter</span>((k) => k.<span class="fn">toLowerCase</span>().<span class="fn">includes</span>(t));
+
+<span class="comment">// "john" has no exact rep, so substring runs →</span>
+<span class="comment">// matches "John Doe" AND "John Smith" → 2 candidates → ambiguity</span></code></pre>
+
+  <h3>The three outcomes</h3>
+  <div class="flow">
+    <div class="flow-row">
+      <div class="flow-box warn">
+        <b>Term matches 2+ known values <span class="badge badge-amber">resolver.ts:52</span></b>
+        <span>"Did you mean one of these for salesRep 'john'?" — <strong>with candidate buttons</strong>. This is the screenshot case ("john" → John Doe, John Smith).</span>
+      </div>
+    </div>
+    <div class="arrow">·</div>
+    <div class="flow-row">
+      <div class="flow-box warn">
+        <b>Term matches 0 values (no cross-field fallback) <span class="badge badge-amber">ChatPanel.tsx:68</span></b>
+        <span>"No salesRep matching 'john' found." — <strong>no buttons</strong>, since there are no candidates to offer.</span>
+      </div>
+    </div>
+    <div class="arrow">·</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>Term matches exactly 1 value <span class="badge badge-green">resolver.ts:41</span></b>
+        <span>No clarify UI — it resolves silently and goes straight to the Yes/No confirmation prompt.</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>What suppresses the UI even when a term is ambiguous</h3>
+  <div class="edge">
+    <strong>A saved correction short-circuits it.</strong>
+    <code>lookupCorrection("john", "salesRep")</code> runs <em>before</em> matching (resolver.ts:34).
+    If "john → John Smith" was saved earlier, the term resolves directly and no clarify bubble appears.
+  </div>
+  <div class="edge">
+    <strong>Cross-field fallback (salesRep ↔ customer) can quietly resolve it.</strong>
+    If a salesRep term has 0 rep matches but exactly 1 <em>customer</em> match, the resolver promotes it to
+    the customer field instead of asking (resolver.ts:43–47). Only when that fallback also fails to land a
+    single match does the ambiguity surface.
+  </div>
+</section>
+
+<!-- ─────────────────────── What to improve ─────────────────────── -->
+<section>
+  <h2>What to improve</h2>
+
+  <p>
+    The current design is deliberately scoped for a single-instance demo. These are the concrete next steps,
+    grouped by how much they unblock — each one traces back to a limitation already noted above.
+  </p>
+
+  <div class="cols">
+    <div class="col-box now">
+      <h4>Correctness &amp; UX</h4>
+      <ul>
+        <li><strong>No way to delete a bad correction.</strong> A wrong "john → John Smith" can only be overwritten via the "No" path — there's no list/clear UI.</li>
+        <li><strong>Field-scoped lookup misses obvious matches.</strong> A correction saved under <code>customer</code> isn't consulted for <code>salesRep</code>; consider a cross-field correction check.</li>
+        <li><strong>No fuzzy name search — only <code>includes()</code>.</strong> Matching is pure substring, so a typo like "jon" or "jhon" matches <em>nothing</em> and the query silently fails. Fuzzy/typo-tolerant matching (e.g. trigram or edit-distance) would catch these.</li>
+      </ul>
+    </div>
+    <div class="col-box future">
+      <h4>Scaling &amp; production</h4>
+      <ul>
+        <li><strong>Single-instance bus + SQLite.</strong> Swap to Redis pub/sub + Postgres (see Q4) before running more than one node.</li>
+        <li><strong>No auth, global corrections.</strong> Scope the <code>Correction</code> row by <code>userId</code> and add auth middleware for multi-user.</li>
+        <li><strong>Static FX rates.</strong> Move hardcoded <code>currency.ts</code> rates to a live/daily-updated source.</li>
+        <li><strong><code>distinctValues</code> loads the whole column into Node.</strong> Every query runs a <code>SELECT DISTINCT</code> full table scan, then <code>matchCandidates</code> linear-scans the result in JS. With many names this is both slow (scan grows with row count) and breaks the UI (a substring can return hundreds of candidates). Push matching into the DB — <code>WHERE name ILIKE '%t%' LIMIT 10</code> with a trigram index — instead of filtering in JS.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Lower-priority hardening</h3>
+  <div class="edge">
+    <strong>Test coverage for the correction edge cases.</strong>
+    The "No" path, cross-field promotion, and correction overwrite are the trickiest flows and the most prone to regression.
+    They're worth pinning down with tests so future changes to <code>resolver.ts</code> / <code>ChatPanel.tsx</code> stay safe.
+  </div>
+  <div class="edge">
+    <strong>Observability on resolution outcomes.</strong>
+    There's no signal for how often queries hit a stored correction vs. ambiguity vs. zero-match.
+    Logging the outcome per query would show whether correction learning is actually reducing prompts over time.
+  </div>
+</section>
+
+</body>
+</html>
