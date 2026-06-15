@@ -2,11 +2,14 @@
 import { useState, useEffect, useRef } from "react";
 import type { Filter, Ambiguity } from "@/src/lib/types";
 
+// A chat bubble. "clarify" bubbles carry candidate buttons for the user to pick from.
 type Msg =
   | { role: "user"; text: string }
   | { role: "agent"; text: string }
   | { role: "clarify"; text: string; ambiguity: Ambiguity; baseFilter: Filter };
 
+// A resolved filter awaiting the user's Yes/No. `correction` (if set) is the mapping to
+// persist on Yes; `draft` is the raw LLM parse, kept so the No path can detect a changed value.
 type PendingConfirm = { filter: Filter; interpretation: string; correction?: { term: string; field: string }; draft?: Filter };
 
 export function ChatPanel({
@@ -30,9 +33,13 @@ export function ChatPanel({
   //    rather than restarting. If the resolved value differs from correctionDraft, a correction
   //    is saved to the DB via /api/correction so it applies automatically in the future.
   // 4. pendingAmbiguity tracks an unresolved term when the agent asks the user to pick a candidate.
+  // pendingConfirm — the resolved filter waiting for your Yes/No. Drives the "Is that right?" bubble.
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  // correctionBase — the last filter to build on, so your next message refines instead of starting over.
   const [correctionBase, setCorrectionBase] = useState<Filter | null>(null);
+  // pendingAmbiguity — the unresolved term when you were asked to pick a candidate; used later to know what got corrected.
   const [pendingAmbiguity, setPendingAmbiguity] = useState<Ambiguity | null>(null);
+  // correctionDraft — the raw LLM parse (e.g. {salesRep: "john"}); compared against the new value to detect a correction.
   const [correctionDraft, setCorrectionDraft] = useState<Filter | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
 
@@ -49,11 +56,17 @@ export function ChatPanel({
     }).then((r) => r.json());
   }
 
+  // Sends a query (or a correction follow-up) to /api/query and decides what to show next.
   async function send(text: string) {
     setMessages((m) => [...m, { role: "user", text }]);
+    // Carry context from a prior turn: `base` = last filter to refine on top of;
+    // `carryAmbiguity`/`localCorrectionDraft` = info needed to detect a correction below.
+    // `base != null` is how we know this is a correction follow-up (correctionBase was staged
+    // by clicking No or picking a candidate); a plain new query has base === null.
     const base = correctionBase ?? pendingConfirm?.filter ?? null;
     const carryAmbiguity = base ? pendingAmbiguity : null;
     const localCorrectionDraft = base ? (correctionDraft ?? pendingConfirm?.draft ?? null) : null;
+    // Snapshot taken above; clear the staged state before the async call.
     setPendingConfirm(null);
     setCorrectionBase(null);
     setPendingAmbiguity(null);
@@ -62,6 +75,7 @@ export function ChatPanel({
     try {
       const res = await queryApi(text, base ?? undefined);
       if (res.status === "clarify") {
+        // A term matched multiple/zero values → show a clarify bubble (with buttons if candidates exist).
         const amb: Ambiguity = res.ambiguities[0];
         const label = amb.candidates.length
           ? `Did you mean one of these for ${String(amb.field)} "${amb.term}"?`
@@ -71,10 +85,14 @@ export function ChatPanel({
         setCorrectionBase(partial);
         setPendingAmbiguity(amb);
       } else {
+        // Resolved cleanly. Work out whether this turn corrected an earlier term, so handleYes can persist it.
         let correction: { term: string; field: string } | undefined;
         if (carryAmbiguity && ["salesRep", "customer"].includes(carryAmbiguity.field as string)) {
+          // Came from an ambiguous term the user just disambiguated → that's the correction.
           correction = { term: carryAmbiguity.term, field: carryAmbiguity.field as string };
         } else if (localCorrectionDraft) {
+          // Came from the "No" path: compare the raw LLM term vs. the newly resolved value.
+          // If they differ, the user effectively corrected it → save that mapping.
           for (const field of ["salesRep", "customer"] as const) {
             const originalTerm = localCorrectionDraft[field] as string | undefined;
             const newValue = (res.filter as Record<string, string>)[field];
@@ -84,6 +102,7 @@ export function ChatPanel({
             }
           }
         }
+        // Hold the result for Yes/No confirmation (the correction, if any, fires on Yes).
         setPendingConfirm({ filter: res.filter, interpretation: res.interpretation, draft: res.draft, correction });
       }
     } finally {
@@ -91,6 +110,7 @@ export function ChatPanel({
     }
   }
 
+  // User clicked a candidate button on a clarify bubble → build the filter and ask to confirm.
   function choose(amb: Ambiguity, value: string, baseFilter: Filter) {
     const filter = { ...baseFilter, [amb.field]: value } as Filter;
     const interpretation = Object.entries(filter)
@@ -103,10 +123,14 @@ export function ChatPanel({
     setPendingConfirm({ filter, interpretation, correction });
   }
 
+  // User confirmed the interpretation → apply the filter and, if this turn was a correction, persist it.
   function handleYes() {
     if (!pendingConfirm) return;
     onResults(pendingConfirm.filter);
     setMessages((m) => [...m, { role: "agent", text: `Showing: ${pendingConfirm.interpretation}` }]);
+    // Only saves if this turn corrected a term. POSTs term→resolvedValue to /api/correction,
+    // which upserts the row (insert first time, overwrite on a change e.g. Smith→Doe).
+    // No correction on this turn → block skipped, filter still applies but nothing is persisted.
     if (pendingConfirm.correction) {
       const { term, field } = pendingConfirm.correction;
       const resolvedValue = (pendingConfirm.filter as Record<string, unknown>)[field];
@@ -121,6 +145,8 @@ export function ChatPanel({
     setPendingConfirm(null);
   }
 
+  // User rejected the interpretation. Saves nothing yet — just stashes context so the next
+  // message is treated as a correction (the actual save happens in handleYes after they retype).
   function handleNoClick() {
     setCorrectionBase(pendingConfirm?.filter ?? null);
     setCorrectionDraft(pendingConfirm?.draft ?? null);

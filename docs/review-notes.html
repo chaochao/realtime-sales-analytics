@@ -489,6 +489,7 @@ createdAt     = <span class="str">"2026-06-09T..."</span>
       <ul>
         <li><strong>No way to delete a bad correction.</strong> A wrong "john → John Smith" can only be overwritten via the "No" path — there's no list/clear UI.</li>
         <li><strong>Field-scoped lookup misses obvious matches.</strong> A correction saved under <code>customer</code> isn't consulted for <code>salesRep</code>; consider a cross-field correction check.</li>
+        <li><strong>The "conversation" isn't really AI — it's static matching.</strong> Apart from the initial parse, the flow is deterministic string logic: <code>includes()</code> matching, hardcoded <code>["salesRep", "customer"]</code> field lists, and correction-detection branches spread across <code>send()</code> and <code>choose()</code> gated on a non-null <code>base</code>. It's hard to follow, hard to extend (a new field means editing several places), and doesn't actually reason about the dialogue. A genuine agent loop — let the LLM hold conversation state and decide when to clarify/correct — would be simpler and far more extensible.</li>
         <li><strong>No fuzzy name search — only <code>includes()</code>.</strong> Matching is pure substring, so a typo like "jon" or "jhon" matches <em>nothing</em> and the query silently fails. Fuzzy/typo-tolerant matching (e.g. trigram or edit-distance) would catch these.</li>
       </ul>
     </div>
