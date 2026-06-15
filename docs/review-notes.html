@@ -60,6 +60,68 @@
 <h1>Code Review Notes</h1>
 <p class="subtitle">Real-Time Sales Analytics — Q2: Correction Learning &nbsp;·&nbsp; Q4: Scaling</p>
 
+<!-- ─────────────────────── Q1 ─────────────────────── -->
+<section>
+  <h2>Q1 — What is the basic case?</h2>
+
+  <p>
+    The simplest flow: the user types a name that matches a known sales rep exactly.
+    No ambiguity, no correction — the query resolves directly and the table filters on confirmation.
+  </p>
+
+  <h3>Happy path — exact match (no correction)</h3>
+  <div class="flow">
+    <div class="flow-row">
+      <div class="flow-box highlight">
+        <b>1. User query</b>
+        <span>"Show me John Smith's deals"</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>2. LLM parse → draft filter <span class="badge badge-blue">NL extraction</span></b>
+        <span><code>{ salesRep: "John Smith" }</code></span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>3. Resolver checks corrections DB first <span class="badge badge-blue">resolver.ts:34</span></b>
+        <span><code>lookupCorrection("john smith", "salesRep")</code> → <em>null</em></span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>4. Exact match → one hit <span class="badge badge-green">resolver.ts:11</span></b>
+        <span>"john smith" matches <strong>John Smith</strong> exactly (beats the "john" substring tie with John Doe) → resolves cleanly, no "Did you mean…?"</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>5. API returns <code>status: "ok"</code> → confirmation prompt</b>
+        <span>"I'm reading this as: <strong>salesRep = John Smith</strong>. Is that right?"</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>6. User clicks "Yes, apply" → filter applied <span class="badge badge-green">ChatPanel.tsx:127</span></b>
+        <span><code>onResults(filter)</code> updates the table. <em>Nothing is saved</em> — <code>pendingConfirm.correction</code> is undefined (no term was ambiguous or changed), so the <code>/api/correction</code> POST is skipped.</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>7. Table re-filters to John Smith's rows</b>
+        <span>Chat shows "Showing: salesRep = John Smith".</span>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ─────────────────────── Q2 ─────────────────────── -->
 <section>
   <h2>Q2 — How does correction learning work?</h2>
@@ -172,6 +234,82 @@ correctionDraft   <span class="comment">// the raw LLM parse; used to detect if 
 pendingAmbiguity  <span class="comment">// the unresolved term when the agent asks the user to pick</span></code></pre>
 </section>
 
+<!-- ─────────────────────── Q3 ─────────────────────── -->
+<section>
+  <h2>Q3 — How do we broadcast a big-deal insight?</h2>
+
+  <p>
+    When a new transaction lands, we compare it against its region's history. If it's an outlier,
+    we attach a <em>drift insight</em> to the event and push it to every open tab over Server-Sent Events.
+  </p>
+
+  <h3>Broadcast path</h3>
+  <div class="flow">
+    <div class="flow-row">
+      <div class="flow-box highlight">
+        <b>1. New transaction comes in <span class="badge badge-blue">transactions/route.ts:30</span></b>
+        <span><code>POST /api/transactions</code></span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>2. Snapshot the region's history first <span class="badge badge-blue">route.ts:33</span></b>
+        <span><code>regionPriorAmountsUsd(region)</code> — read prior amounts <em>before</em> inserting the new row</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>3. Insert the transaction <span class="badge badge-blue">route.ts:34</span></b>
+        <span><code>createTransaction(body)</code></span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box warn">
+        <b>4. Detect the big deal <span class="badge badge-amber">drift.ts:19–26</span></b>
+        <span><code>detectDrift(region, amountUsd, prior)</code> → a <code>DriftInsight</code> only if ≥3 prior deals <em>and</em> |z| &gt; 1.5σ from the region average; otherwise <code>null</code>. The insight carries the human-readable <code>message</code>.</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box">
+        <b>5. Recompute analytics <span class="badge badge-blue">route.ts:36</span></b>
+        <span><code>computeAnalytics(...)</code> over all rows</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>6. Publish to the bus <span class="badge badge-green">route.ts:37 · events.ts:16</span></b>
+        <span><code>publishTransaction({ type:"transaction", transaction, analytics, insight })</code> → <code>bus.emit("event", …)</code> on the in-process EventEmitter</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>7. Fan out over SSE <span class="badge badge-green">stream/route.ts:15–18</span></b>
+        <span>Each open <code>/api/stream</code> connection subscribed a <code>send</code> handler; the emit fires each one → <code>controller.enqueue("data: {…}\n\n")</code></span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="flow-row">
+      <div class="flow-box success">
+        <b>8. Browser renders it <span class="badge badge-green">page.tsx:100</span></b>
+        <span><code>EventSource.onmessage</code> parses the event; if <code>data.insight</code> is set, prepend <code>insight.message</code> to state → 📈 bubble</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="edge">
+    <strong>Caveat — single instance only</strong>
+    The bus is an in-process <code>EventEmitter</code>, so the emit only reaches tabs connected to <em>this</em> instance.
+    Tabs that connect <em>after</em> the emit get no replay — there's no buffer in the current <code>stream/route.ts</code>.
+    (See Q4 for the multi-instance fix.)
+  </div>
+</section>
+
 <!-- ─────────────────────── Q4 ─────────────────────── -->
 <section>
   <h2>Q4 — How would you scale this beyond a single instance?</h2>
@@ -253,6 +391,121 @@ pendingAmbiguity  <span class="comment">// the unresolved term when the agent as
     <strong>No auth / single user</strong>
     Corrections are global — there's no user ID on the <code>Correction</code> row.
     Multi-user would require scoping corrections by <code>userId</code> and adding auth middleware.
+  </div>
+</section>
+
+<!-- ─────────────────────── Q5 ─────────────────────── -->
+<section>
+  <h2>Q5 — When do we save the correction?</h2>
+
+  <p>
+    The save happens at exactly one point: <code>handleYes()</code> — when the user clicks
+    <strong>"Yes, apply"</strong> <em>and</em> that turn carried a <code>correction</code> payload.
+    The "No" path saves nothing; it only stashes context so the next message can be detected as a correction
+    and saved on its own subsequent "Yes". (ChatPanel.tsx:127–146)
+  </p>
+
+  <h3>The save condition</h3>
+  <pre><code><span class="comment">// ChatPanel.tsx — handleYes(): apply filter, then persist only if this turn was a correction</span>
+<span class="kw">function</span> <span class="fn">handleYes</span>() {
+  <span class="fn">onResults</span>(pendingConfirm.filter);        <span class="comment">// filter always applies</span>
+  <span class="kw">if</span> (pendingConfirm.correction) {           <span class="comment">// ← gate: only when a term was corrected</span>
+    <span class="kw">const</span> { term, field } = pendingConfirm.correction;
+    <span class="kw">const</span> resolvedValue = pendingConfirm.filter[field];
+    <span class="kw">if</span> (resolvedValue) {
+      <span class="fn">fetch</span>(<span class="str">"/api/correction"</span>, { method: <span class="str">"POST"</span>, body: JSON.<span class="fn">stringify</span>({ term, field, resolvedValue }) });
+    }
+  }
+}</code></pre>
+
+  <h3>How a turn gets a <code>correction</code> payload (the two sources)</h3>
+  <div class="cols">
+    <div class="col-box now">
+      <h4>1. Clicking a clarify candidate <span class="badge badge-blue">choose() · ChatPanel.tsx:114–123</span></h4>
+      <ul>
+        <li>The term was ambiguous by definition, so a <code>correction</code> is attached to <code>pendingConfirm</code>.</li>
+        <li>Gated to <code>["salesRep", "customer"]</code> fields only.</li>
+        <li>The save still waits for "Yes" — clicking the candidate alone does not persist.</li>
+      </ul>
+    </div>
+    <div class="col-box now">
+      <h4>2. Retyping after "No" <span class="badge badge-blue">handleSend() · ChatPanel.tsx:100–106</span></h4>
+      <ul>
+        <li>User rejects, retypes; the re-resolved value is matched back to the original term.</li>
+        <li>If it differs from the draft, a <code>correction</code> is attached to the new <code>pendingConfirm</code>.</li>
+        <li>That turn's "Yes" then overwrites the old mapping via <code>upsert</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="edge">
+    <strong>Key point — confirmation, not interaction, triggers the save.</strong>
+    Neither picking a candidate nor rejecting an interpretation writes to the DB on its own.
+    The <code>/api/correction</code> POST fires only on an explicit "Yes" for a turn that carried a correction —
+    so the user always confirms the mapping before it's learned.
+  </div>
+
+  <div class="edge">
+    <strong>The basic case saves nothing.</strong>
+    An exact, unambiguous match (Q1) leaves <code>pendingConfirm.correction</code> undefined.
+    "Yes" applies the filter but skips the POST entirely — there's nothing to learn.
+  </div>
+</section>
+
+<!-- ─────────────────────── Q6 ─────────────────────── -->
+<section>
+  <h2>Q6 — How do we do sorting?</h2>
+
+  <p>
+    Sorting is <strong>client-side</strong>, entirely inside <code>TransactionsTable.tsx</code>.
+    The server fetch sets an initial order, but every interactive sort the user triggers
+    re-sorts the already-loaded rows in the browser — no refetch.
+  </p>
+
+  <h3>State <span class="badge badge-blue">TransactionsTable.tsx:50–51</span></h3>
+  <p>
+    Two pieces drive it: <code>sortKey</code> (default <code>"date"</code>) and
+    <code>sortDir</code> (default <code>"desc"</code>). Sortable columns are whitelisted by the
+    <code>SortKey</code> type and the <code>COLUMNS</code> array: date, customer, amount, currency, region, sales rep.
+  </p>
+
+  <h3>Clicking a column header <span class="badge badge-blue">handleSort() · :55–63</span></h3>
+  <div class="cols">
+    <div class="col-box now">
+      <h4>Same column</h4>
+      <ul>
+        <li>Flips direction (<code>asc</code> ↔ <code>desc</code>)</li>
+        <li>Resets to page 1</li>
+      </ul>
+    </div>
+    <div class="col-box now">
+      <h4>Different column</h4>
+      <ul>
+        <li>Switches <code>sortKey</code>, resets <code>sortDir</code> to <code>asc</code></li>
+        <li>Resets to page 1</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>The comparison <span class="badge badge-blue">sortRows() · :10–19</span></h3>
+  <pre><code><span class="comment">// copy first (never mutate props), then compare by type</span>
+<span class="kw">return</span> [...rows].<span class="fn">sort</span>((a, b) => {
+  <span class="kw">const</span> cmp = <span class="kw">typeof</span> av === <span class="str">"number"</span> && <span class="kw">typeof</span> bv === <span class="str">"number"</span>
+    ? av - bv                              <span class="comment">// numeric (amount)</span>
+    : String(av).<span class="fn">localeCompare</span>(String(bv));  <span class="comment">// text (everything else)</span>
+  <span class="kw">return</span> dir === <span class="str">"asc"</span> ? cmp : -cmp;        <span class="comment">// direction flips the sign</span>
+});</code></pre>
+
+  <div class="edge">
+    <strong>Sort runs before pagination.</strong>
+    The full result set is sorted, then sliced into 10-row pages (<code>:65–67</code>),
+    so sorting always orders <em>all</em> matching rows — not just the visible page.
+  </div>
+
+  <div class="edge">
+    <strong>Server order is only the initial fetch.</strong>
+    <code>transactions.ts</code> sets <code>orderBy: [{ date: "desc" }, { createdAt: "desc" }]</code> (<code>:34</code>),
+    which decides what arrives first. Once loaded, the client table owns ordering.
   </div>
 </section>
 
